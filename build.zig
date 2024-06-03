@@ -19,10 +19,6 @@ pub fn build(b: *std.Build) !void {
     const mach_dep = b.dependency("mach", .{
         .target = target,
         .optimize = optimize,
-
-        // Since we're only using @import("mach").core, we can specify this to avoid
-        // pulling in unneccessary dependencies.
-        .core = true,
     });
     const app = try mach.CoreApp.init(b, mach_dep.builder, .{
         .name = "gravitas",
