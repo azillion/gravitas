@@ -1,22 +1,11 @@
 .{
     .name = "gravitas",
-    .version = "0.1.0",
-    .minimum_zig_version = "0.12.0",
-    .paths = .{
-        "src",
-        "build.zig",
-        "build.zig.zon",
-        "LICENSE",
-        "README.md",
-        "",
-    },
+    .version = "0.0.1",
     .dependencies = .{
-        .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#d9f3ef983b7021417cc91bd5788cd925ca06aa83",
-            .hash = "12200a472b4f1a3a6db1002f39f10ae0cccf58ada45bf25ddc5fd48384dd187f55ea",
-        },
-        .cimgui = .{
-            .path = "deps/cimgui",
+        .@"raylib-zig" = .{
+            .url = "https://github.com/Not-Nik/raylib-zig/archive/devel.tar.gz",
+            .hash = "1220d5a31c78da247aaee092be682e3374628dbad1ab631d72df00074c35c61a6bf4",
         },
     },
+    .paths = .{""},
 }

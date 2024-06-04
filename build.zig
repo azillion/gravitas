@@ -1,90 +1,47 @@
 const std = @import("std");
-const Build = std.Build;
-const OptimizeMode = std.builtin.OptimizeMode;
-const ResolvedTarget = Build.ResolvedTarget;
-const Dependency = Build.Dependency;
-const sokol = @import("sokol");
+const rlz = @import("raylib-zig");
 
-pub fn build(b: *Build) !void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // note that the sokol dependency is built with `.with_imgui_sokol = true`
-    const dep_sokol = b.dependency("sokol", .{
-        .target = target,
-        .optimize = optimize,
-        .with_sokol_imgui = true,
-    });
-    const dep_cimgui = b.dependency("cimgui", .{
+    const raylib_dep = b.dependency("raylib-zig", .{
         .target = target,
         .optimize = optimize,
     });
 
-    // inject the cimgui header search path into the sokol C library compile step
-    const cimgui_root = dep_cimgui.namedWriteFiles("cimgui").getDirectory();
-    dep_sokol.artifact("sokol_clib").addIncludePath(cimgui_root);
+    const raylib = raylib_dep.module("raylib");
+    const raymath = raylib_dep.module("raymath");
+    const raylib_artifact = raylib_dep.artifact("raylib");
 
-    // from here on different handling for native vs wasm builds
-    if (target.result.isWasm()) {
-        try buildWasm(b, target, optimize, dep_sokol, dep_cimgui);
-    } else {
-        try buildNative(b, target, optimize, dep_sokol, dep_cimgui);
+    //web exports are completely separate
+    if (target.query.os_tag == .emscripten) {
+        const exe_lib = rlz.emcc.compileForEmscripten(b, "gravitas", "src/gravitas.zig", target, optimize);
+
+        exe_lib.linkLibrary(raylib_artifact);
+        exe_lib.root_module.addImport("raylib", raylib);
+        exe_lib.root_module.addImport("raymath", raymath);
+
+        // Note that raylib itself is not actually added to the exe_lib output file, so it also needs to be linked with emscripten.
+        const link_step = try rlz.emcc.linkWithEmscripten(b, &[_]*std.Build.Step.Compile{ exe_lib, raylib_artifact });
+
+        b.getInstallStep().dependOn(&link_step.step);
+        const run_step = try rlz.emcc.emscriptenRunStep(b);
+        run_step.step.dependOn(&link_step.step);
+        const run_option = b.step("run", "Run gravitas");
+        run_option.dependOn(&run_step.step);
+        return;
     }
-}
 
-fn buildNative(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Dependency, dep_cimgui: *Dependency) !void {
-    const gravitas = b.addExecutable(.{
-        .name = "gravitas",
-        .root_source_file = b.path("src/gravitas.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    gravitas.root_module.addImport("sokol", dep_sokol.module("sokol"));
-    gravitas.root_module.addImport("cimgui", dep_cimgui.module("cimgui"));
-    b.installArtifact(gravitas);
-    b.step("run", "Run gravitas").dependOn(&b.addRunArtifact(gravitas).step);
-}
+    const exe = b.addExecutable(.{ .name = "gravitas", .root_source_file = .{ .path = "src/gravitas.zig" }, .optimize = optimize, .target = target });
 
-fn buildWasm(b: *Build, target: ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Dependency, dep_cimgui: *Dependency) !void {
-    // build the main file into a library, this is because the WASM 'exe'
-    // needs to be linked in a separate build step with the Emscripten linker
-    const gravitas = b.addStaticLibrary(.{
-        .name = "gravitas",
-        .root_source_file = b.path("src/gravitas.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    gravitas.root_module.addImport("sokol", dep_sokol.module("sokol"));
-    gravitas.root_module.addImport("cimgui", dep_cimgui.module("cimgui"));
+    exe.linkLibrary(raylib_artifact);
+    exe.root_module.addImport("raylib", raylib);
+    exe.root_module.addImport("raymath", raymath);
 
-    // get the Emscripten SDK dependency from the sokol dependency
-    const dep_emsdk = dep_sokol.builder.dependency("emsdk", .{});
+    const run_cmd = b.addRunArtifact(exe);
+    const run_step = b.step("run", "Run gravitas");
+    run_step.dependOn(&run_cmd.step);
 
-    // need to inject the Emscripten system header include path into
-    // the cimgui C library otherwise the C/C++ code won't find
-    // C stdlib headers
-    const emsdk_incl_path = dep_emsdk.path("upstream/emscripten/cache/sysroot/include");
-    dep_cimgui.artifact("cimgui_clib").addSystemIncludePath(emsdk_incl_path);
-
-    // all C libraries need to depend on the sokol library, when building for
-    // WASM this makes sure that the Emscripten SDK has been setup before
-    // C compilation is attempted (since the sokol C library depends on the
-    // Emscripten SDK setup step)
-    dep_cimgui.artifact("cimgui_clib").step.dependOn(&dep_sokol.artifact("sokol_clib").step);
-
-    // create a build step which invokes the Emscripten linker
-    const link_step = try sokol.emLinkStep(b, .{
-        .lib_main = gravitas,
-        .target = target,
-        .optimize = optimize,
-        .emsdk = dep_emsdk,
-        .use_webgl2 = true,
-        .use_emmalloc = true,
-        .use_filesystem = false,
-        .shell_file_path = dep_sokol.path("src/sokol/web/shell.html").getPath(b),
-    });
-    // ...and a special run step to start the web build output via 'emrun'
-    const run = sokol.emRunStep(b, .{ .name = "gravitas", .emsdk = dep_emsdk });
-    run.step.dependOn(&link_step.step);
-    b.step("run", "Run gravitas").dependOn(&run.step);
+    b.installArtifact(exe);
 }
