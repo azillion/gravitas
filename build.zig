@@ -1,52 +1,62 @@
 const std = @import("std");
-const mach = @import("mach");
+const Build = std.Build;
+const OptimizeMode = std.builtin.OptimizeMode;
+const sokol = @import("sokol");
 
-// Although this function looks imperative, note that its job is to
-// declaratively construct a build graph that will be executed by an external
-// runner.
-pub fn build(b: *std.Build) !void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
+pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
-
-    // Standard optimization options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
-    // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
-
-    const mach_dep = b.dependency("mach", .{
+    const dep_sokol = b.dependency("sokol", .{
         .target = target,
         .optimize = optimize,
     });
-    const app = try mach.CoreApp.init(b, mach_dep.builder, .{
+
+    // special case handling for native vs web build
+    if (target.result.isWasm()) {
+        try buildWeb(b, target, optimize, dep_sokol);
+    } else {
+        try buildNative(b, target, optimize, dep_sokol);
+    }
+}
+
+// this is the regular build for all native platforms, nothing surprising here
+fn buildNative(b: *Build, target: Build.ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Build.Dependency) !void {
+    const gravitas = b.addExecutable(.{
         .name = "gravitas",
-        .src = "src/main.zig",
         .target = target,
         .optimize = optimize,
-        .deps = &[_]std.Build.Module.Import{},
+        .root_source_file = b.path("src/gravitas.zig"),
     });
-    if (b.args) |args| app.run.addArgs(args);
+    gravitas.root_module.addImport("sokol", dep_sokol.module("sokol"));
+    b.installArtifact(gravitas);
+    const run = b.addRunArtifact(gravitas);
+    b.step("run", "Run gravitas").dependOn(&run.step);
+}
 
-    // This creates a build step. It will be visible in the `zig build --help` menu,
-    // and can be selected like this: `zig build run`
-    // This will evaluate the `run` step rather than the default, which is "install".
-    const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&app.run.step);
-
-    // Creates a step for unit testing. This only builds the test executable
-    // but does not run it.
-    const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
+// for web builds, the Zig code needs to be built into a library and linked with the Emscripten linker
+fn buildWeb(b: *Build, target: Build.ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Build.Dependency) !void {
+    const gravitas = b.addStaticLibrary(.{
+        .name = "gravitas",
         .target = target,
         .optimize = optimize,
+        .root_source_file = b.path("src/gravitas.zig"),
     });
+    gravitas.root_module.addImport("sokol", dep_sokol.module("sokol"));
 
-    // Similar to creating the run step earlier, this exposes a `test` step to
-    // the `zig build --help` menu, providing a way for the user to request
-    // running the unit tests.
-    const run_unit_tests = b.addRunArtifact(unit_tests);
-    const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&run_unit_tests.step);
+    // create a build step which invokes the Emscripten linker
+    const emsdk = dep_sokol.builder.dependency("emsdk", .{});
+    const link_step = try sokol.emLinkStep(b, .{
+        .lib_main = gravitas,
+        .target = target,
+        .optimize = optimize,
+        .emsdk = emsdk,
+        .use_webgl2 = true,
+        .use_emmalloc = true,
+        .use_filesystem = false,
+        .shell_file_path = dep_sokol.path("src/sokol/web/shell.html").getPath(b),
+    });
+    // ...and a special run step to start the web build output via 'emrun'
+    const run = sokol.emRunStep(b, .{ .name = "gravitas", .emsdk = emsdk });
+    run.step.dependOn(&link_step.step);
+    b.step("run", "Run gravitas").dependOn(&run.step);
 }
