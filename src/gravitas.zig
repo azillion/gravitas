@@ -36,12 +36,6 @@ pub fn main() anyerror!void {
     rl.setTargetFPS(60);
 
     while (!rl.windowShouldClose()) {
-        // if (rl.isKeyDown(rl.KeyboardKey.key_right)) {
-        //     player.x += 10;
-        // } else if (rl.isKeyDown(rl.KeyboardKey.key_left)) {
-        //     player.x -= 10;
-        // }
-
         camera.target = rl.Vector2.init(0.0, 0.0);
 
         if (rl.isKeyDown(rl.KeyboardKey.key_a)) {
