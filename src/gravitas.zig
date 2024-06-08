@@ -70,8 +70,6 @@ pub fn main() anyerror!void {
                 rl.drawCircleV(ball, 60, ballColors[i]);
             }
 
-            // rl.drawRectangleRec(player, rl.Color.red);
-
             // rl.drawLine(
             //     @as(i32, @intFromFloat(camera.target.x)),
             //     -screenHeight * 10,
@@ -88,13 +86,6 @@ pub fn main() anyerror!void {
             // );
         }
 
-        // rl.drawText("SCREEN AREA", 640, 10, 20, rl.Color.red);
-        //
-        // rl.drawRectangle(0, 0, screenWidth, 5, rl.Color.red);
-        // rl.drawRectangle(0, 5, 5, screenHeight - 10, rl.Color.red);
-        // rl.drawRectangle(screenWidth - 5, 5, 5, screenHeight - 10, rl.Color.red);
-        // rl.drawRectangle(0, screenHeight - 5, screenWidth, 5, rl.Color.red);
-        //
         // rl.drawRectangle(10, 10, 250, 113, rl.Color.sky_blue.fade(0.5));
         // rl.drawRectangleLines(10, 10, 250, 113, rl.Color.blue);
         //
