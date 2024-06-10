@@ -58,7 +58,7 @@ pub fn main() anyerror!void {
         rl.beginDrawing();
         defer rl.endDrawing();
 
-        rl.clearBackground(rl.Color.ray_white);
+        rl.clearBackground(rl.Color.black);
 
         {
             camera.begin();
@@ -69,30 +69,6 @@ pub fn main() anyerror!void {
             for (balls, 0..) |ball, i| {
                 rl.drawCircleV(ball, 60, ballColors[i]);
             }
-
-            // rl.drawLine(
-            //     @as(i32, @intFromFloat(camera.target.x)),
-            //     -screenHeight * 10,
-            //     @as(i32, @intFromFloat(camera.target.x)),
-            //     screenHeight * 10,
-            //     rl.Color.green,
-            // );
-            // rl.drawLine(
-            //     -screenWidth * 10,
-            //     @as(i32, @intFromFloat(camera.target.y)),
-            //     screenWidth * 10,
-            //     @as(i32, @intFromFloat(camera.target.y)),
-            //     rl.Color.green,
-            // );
         }
-
-        // rl.drawRectangle(10, 10, 250, 113, rl.Color.sky_blue.fade(0.5));
-        // rl.drawRectangleLines(10, 10, 250, 113, rl.Color.blue);
-        //
-        // rl.drawText("Free 2D camera controls:", 20, 20, 10, rl.Color.black);
-        // rl.drawText("- Right/Left to move Offset", 40, 40, 10, rl.Color.dark_gray);
-        // rl.drawText("- Mouse Wheel to Zoom in-out", 40, 60, 10, rl.Color.dark_gray);
-        // rl.drawText("- A/S to Rotate", 40, 80, 10, rl.Color.dark_gray);
-        // rl.drawText("- R to reset Zoom and Rotation", 40, 100, 10, rl.Color.dark_gray);
     }
 }
