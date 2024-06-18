@@ -2,7 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 const rlm = @import("raymath");
 
-const MAX_BALLS = 50;
+const MAX_BALLS = 100;
 
 pub fn main() anyerror!void {
     const screenWidth = 800;
