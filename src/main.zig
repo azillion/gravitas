@@ -6,8 +6,10 @@ const wgpu = zgpu.wgpu;
 const zgui = @import("zgui");
 const zm = @import("zmath");
 
+const svo = @import("svo/octree.zig");
+
 const content_dir = "assets/";
-const window_title = "zig-gamedev: triangle (wgpu)";
+const window_title = "Gravitas";
 
 // zig fmt: off
 const wgsl_vs =
@@ -40,7 +42,7 @@ const Vertex = struct {
     color: [3]f32,
 };
 
-const DemoState = struct {
+const State = struct {
     gctx: *zgpu.GraphicsContext,
 
     pipeline: zgpu.RenderPipelineHandle,
@@ -51,9 +53,14 @@ const DemoState = struct {
 
     depth_texture: zgpu.TextureHandle,
     depth_texture_view: zgpu.TextureViewHandle,
+
+    svo: svo.SparseVoxelOctree,
 };
 
-fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !DemoState {
+fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
+    var octree = try svo.SparseVoxelOctree.init(allocator, 8); // 8 levels of detail
+    try octree.generateSimpleTerrain(256, 128, 256);
+
     const gctx = try zgpu.GraphicsContext.create(
         allocator,
         .{
@@ -155,7 +162,7 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !DemoState {
     // Create a depth texture and its 'view'.
     const depth = createDepthTexture(gctx);
 
-    return DemoState{
+    return State{
         .gctx = gctx,
         .pipeline = pipeline,
         .bind_group = bind_group,
@@ -163,23 +170,25 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !DemoState {
         .index_buffer = index_buffer,
         .depth_texture = depth.texture,
         .depth_texture_view = depth.view,
+        .svo = octree,
     };
 }
 
-fn deinit(allocator: std.mem.Allocator, demo: *DemoState) void {
+fn deinit(allocator: std.mem.Allocator, demo: *State) void {
     demo.gctx.destroy(allocator);
+    demo.svo.deinit();
     demo.* = undefined;
 }
 
-fn update(demo: *DemoState) void {
+fn update(demo: *State) void {
     zgui.backend.newFrame(
         demo.gctx.swapchain_descriptor.width,
         demo.gctx.swapchain_descriptor.height,
     );
-    zgui.showDemoWindow(null);
+    // zgui.showDemoWindow(null);
 }
 
-fn draw(demo: *DemoState) void {
+fn draw(demo: *State) void {
     const gctx = demo.gctx;
     const fb_width = gctx.swapchain_descriptor.width;
     const fb_height = gctx.swapchain_descriptor.height;
