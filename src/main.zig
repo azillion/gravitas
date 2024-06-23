@@ -4,31 +4,35 @@ const zglfw = @import("zglfw");
 const zgpu = @import("zgpu");
 const wgpu = zgpu.wgpu;
 const zgui = @import("zgui");
-const zm = @import("zmath");
+const zmath = @import("zmath");
 const svo = @import("svo/octree.zig");
 const Voxel = @import("svo/voxel.zig").Voxel;
+const camera = @import("camera.zig");
+const State = @import("state.zig").State;
 
 const content_dir = "assets/";
 const window_title = "Gravitas Engine";
 
-const wgsl_vs = @embedFile("shaders/raymarcher.vs.wgsl");
-const wgsl_fs = @embedFile("shaders/raymarcher.fs.wgsl");
+const wgsl_vs = @embedFile("shaders/simple.vs.wgsl");
+const wgsl_fs = @embedFile("shaders/simple.fs.wgsl");
 
-const State = struct {
-    gctx: *zgpu.GraphicsContext,
-    pipeline: zgpu.RenderPipelineHandle,
-    bind_group: zgpu.BindGroupHandle,
-    camera_buffer: zgpu.BufferHandle,
-    camera_position_buffer: zgpu.BufferHandle,
-    inverse_projection_buffer: zgpu.BufferHandle,
-    clip_to_world_buffer: zgpu.BufferHandle,
-    voxel_data_buffer: zgpu.BufferHandle,
-    octree: svo.SparseVoxelOctree,
+const Vertex = struct {
+    position: [3]f32,
+    color: [3]f32,
 };
 
+const vertices = [_]Vertex{
+    .{ .position = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
+    .{ .position = .{ 0.5, -0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
+    .{ .position = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
+    .{ .position = .{ -0.5, 0.5, 0.0 }, .color = .{ 1.0, 1.0, 0.0 } },
+};
+
+const indices = [_]u16{ 0, 1, 2, 0, 2, 3 };
+
 fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
-    var octree = try svo.SparseVoxelOctree.init(allocator, 8); // 8 levels of detail
-    try octree.generateSimpleTerrain(256, 256, 256);
+    // var octree = try svo.SparseVoxelOctree.init(allocator, 8); // 8 levels of detail
+    // try octree.generateSimpleTerrain(256, 256, 256);
 
     const gctx = try zgpu.GraphicsContext.create(
         allocator,
@@ -47,19 +51,45 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
     );
     errdefer gctx.destroy(allocator);
 
+    const cam = camera.Camera{
+        .position = zmath.f32x4(3.0, 3.0, 3.0, 1.0),
+        .front = zmath.normalize3(zmath.f32x4(-3.0, -3.0, -3.0, 0.0)),
+        .up = zmath.f32x4(0.0, 1.0, 0.0, 0.0),
+        .right = zmath.normalize3(zmath.cross3(zmath.f32x4(-3.0, -3.0, -3.0, 0.0), zmath.f32x4(0.0, 1.0, 0.0, 0.0))),
+        .yaw = -135.0,
+        .pitch = -30.0,
+    };
+
+    // Create vertex buffer
+    const vertex_buffer = gctx.createBuffer(.{
+        .usage = .{ .copy_dst = true, .vertex = true },
+        .size = @sizeOf(@TypeOf(vertices)),
+    });
+    gctx.queue.writeBuffer(gctx.lookupResource(vertex_buffer).?, 0, Vertex, &vertices);
+
+    // Create index buffer
+    const index_buffer = gctx.createBuffer(.{
+        .usage = .{ .copy_dst = true, .index = true },
+        .size = @sizeOf(@TypeOf(indices)),
+    });
+    gctx.queue.writeBuffer(gctx.lookupResource(index_buffer).?, 0, u16, &indices);
+
+    // Create MVP buffer
+    const mvp_buffer = gctx.createBuffer(.{
+        .usage = .{ .copy_dst = true, .uniform = true },
+        .size = @sizeOf(zmath.Mat),
+    });
+
+    // Create bind group layout and pipeline
     const bind_group_layout = gctx.createBindGroupLayout(&.{
-        zgpu.bufferEntry(0, .{ .vertex = true, .fragment = true }, .uniform, false, 0),
-        zgpu.bufferEntry(1, .{ .vertex = true, .fragment = true }, .uniform, false, 0),
-        zgpu.bufferEntry(2, .{ .vertex = true, .fragment = true }, .uniform, false, 0),
-        zgpu.bufferEntry(3, .{ .vertex = true, .fragment = true }, .uniform, false, 0),
-        zgpu.bufferEntry(4, .{ .fragment = true }, .read_only_storage, false, 0),
+        zgpu.bufferEntry(0, .{ .vertex = true }, .uniform, false, 0),
     });
     defer gctx.releaseResource(bind_group_layout);
 
     const pipeline_layout = gctx.createPipelineLayout(&.{bind_group_layout});
     defer gctx.releaseResource(pipeline_layout);
 
-    const pipeline = pipeline: {
+    const pipeline = pipelines: {
         const vs_module = zgpu.createWgslShaderModule(gctx.device, wgsl_vs, "vs");
         defer vs_module.release();
 
@@ -70,12 +100,23 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
             .format = zgpu.GraphicsContext.swapchain_format,
         }};
 
+        const vertex_attributes = [_]wgpu.VertexAttribute{
+            .{ .format = .float32x3, .offset = 0, .shader_location = 0 },
+            .{ .format = .float32x3, .offset = @offsetOf(Vertex, "color"), .shader_location = 1 },
+        };
+
+        const vertex_buffers = [_]wgpu.VertexBufferLayout{.{
+            .array_stride = @sizeOf(Vertex),
+            .attribute_count = vertex_attributes.len,
+            .attributes = &vertex_attributes,
+        }};
+
         const pipeline_descriptor = wgpu.RenderPipelineDescriptor{
             .vertex = wgpu.VertexState{
                 .module = vs_module,
                 .entry_point = "vs_main",
-                .buffer_count = 0,
-                .buffers = null,
+                .buffer_count = vertex_buffers.len,
+                .buffers = &vertex_buffers,
             },
             .primitive = wgpu.PrimitiveState{
                 .front_face = .ccw,
@@ -89,57 +130,26 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
                 .targets = &color_targets,
             },
         };
-        break :pipeline gctx.createRenderPipeline(pipeline_layout, pipeline_descriptor);
+        break :pipelines gctx.createRenderPipeline(pipeline_layout, pipeline_descriptor);
     };
 
-    const camera_buffer = gctx.createBuffer(.{
-        .usage = .{ .copy_dst = true, .uniform = true },
-        .size = @sizeOf(zm.Mat),
-    });
-
-    const camera_position_buffer = gctx.createBuffer(.{
-        .usage = .{ .copy_dst = true, .uniform = true },
-        .size = @sizeOf(zm.F32x4),
-    });
-
-    const inverse_projection_buffer = gctx.createBuffer(.{
-        .usage = .{ .copy_dst = true, .uniform = true },
-        .size = @sizeOf(zm.Mat),
-    });
-
-    const clip_to_world_buffer = gctx.createBuffer(.{
-        .usage = .{ .copy_dst = true, .uniform = true },
-        .size = @sizeOf(zm.Mat),
-    });
-
-    const voxel_data_buffer = gctx.createBuffer(.{
-        .usage = .{ .copy_dst = true, .storage = true },
-        .size = 256 * 256 * 256 * @sizeOf(u32),
-    });
-
     const bind_group = gctx.createBindGroup(bind_group_layout, &.{
-        .{ .binding = 0, .buffer_handle = camera_buffer, .offset = 0, .size = @sizeOf(zm.Mat) },
-        .{ .binding = 1, .buffer_handle = inverse_projection_buffer, .offset = 0, .size = @sizeOf(zm.Mat) },
-        .{ .binding = 2, .buffer_handle = clip_to_world_buffer, .offset = 0, .size = @sizeOf(zm.Mat) },
-        .{ .binding = 3, .buffer_handle = camera_position_buffer, .offset = 0, .size = @sizeOf(zm.F32x4) },
-        .{ .binding = 4, .buffer_handle = voxel_data_buffer, .offset = 0, .size = 256 * 256 * 256 * @sizeOf(u32) },
+        .{ .binding = 0, .buffer_handle = mvp_buffer, .offset = 0, .size = @sizeOf(zmath.Mat) },
     });
 
     return State{
         .gctx = gctx,
         .pipeline = pipeline,
         .bind_group = bind_group,
-        .camera_buffer = camera_buffer,
-        .camera_position_buffer = camera_position_buffer,
-        .inverse_projection_buffer = inverse_projection_buffer,
-        .clip_to_world_buffer = clip_to_world_buffer,
-        .voxel_data_buffer = voxel_data_buffer,
-        .octree = octree,
+        .vertex_buffer = vertex_buffer,
+        .index_buffer = index_buffer,
+        .mvp_buffer = mvp_buffer,
+        .camera = cam,
     };
 }
 
 fn deinit(allocator: std.mem.Allocator, state: *State) void {
-    state.octree.deinit();
+    // state.octree.deinit();
     state.gctx.destroy(allocator);
     state.* = undefined;
 }
@@ -151,6 +161,8 @@ fn update(state: *State) void {
     );
 
     zgui.showDemoWindow(null);
+
+    zgui.render();
 }
 
 fn updateVoxelData(state: *State, allocator: *std.mem.Allocator) void {
@@ -184,29 +196,17 @@ fn updateVoxelData(state: *State, allocator: *std.mem.Allocator) void {
 
 fn draw(state: *State) void {
     const gctx = state.gctx;
-    const fb_width = gctx.swapchain_descriptor.width;
-    const fb_height = gctx.swapchain_descriptor.height;
 
-    const cam_world_to_view = zm.lookAtLh(
-        zm.f32x4(128.0, 128.0, -128.0, 1.0), // Camera position
-        zm.f32x4(128.0, 0.0, 128.0, 1.0), // Look at center of terrain
-        zm.f32x4(0.0, 1.0, 0.0, 0.0),
-    );
-    const cam_view_to_clip = zm.perspectiveFovLh(
+    // Update MVP matrix
+    const cam_world_to_view = zmath.lookAtLh(state.camera.position, state.camera.position + state.camera.front, state.camera.up);
+    const cam_view_to_clip = zmath.perspectiveFovLh(
         0.25 * math.pi,
-        @as(f32, @floatFromInt(fb_width)) / @as(f32, @floatFromInt(fb_height)),
+        @as(f32, @floatFromInt(gctx.swapchain_descriptor.width)) / @as(f32, @floatFromInt(gctx.swapchain_descriptor.height)),
         0.01,
-        200.0,
+        100.0,
     );
-    const cam_world_to_clip = zm.mul(cam_world_to_view, cam_view_to_clip);
-    const cam_clip_to_world = zm.inverse(cam_world_to_clip);
-    const inverse_projection = zm.inverse(cam_view_to_clip);
-    const camera_position = zm.f32x4(128.0, 128.0, -128.0, 1.0);
-
-    gctx.queue.writeBuffer(gctx.lookupResource(state.camera_buffer).?, 0, zm.Mat, &.{cam_world_to_clip});
-    gctx.queue.writeBuffer(gctx.lookupResource(state.inverse_projection_buffer).?, 0, zm.Mat, &.{inverse_projection});
-    gctx.queue.writeBuffer(gctx.lookupResource(state.clip_to_world_buffer).?, 0, zm.Mat, &.{cam_clip_to_world});
-    gctx.queue.writeBuffer(gctx.lookupResource(state.camera_position_buffer).?, 0, zm.F32x4, &.{camera_position});
+    const mvp = zmath.mul(cam_world_to_view, cam_view_to_clip);
+    gctx.queue.writeBuffer(gctx.lookupResource(state.mvp_buffer).?, 0, zmath.Mat, &.{mvp});
 
     const back_buffer_view = gctx.swapchain.getCurrentTextureView();
     defer back_buffer_view.release();
@@ -233,26 +233,9 @@ fn draw(state: *State) void {
 
             pass.setPipeline(gctx.lookupResource(state.pipeline).?);
             pass.setBindGroup(0, gctx.lookupResource(state.bind_group).?, &.{});
-            pass.draw(3, 1, 0, 0);
-        }
-
-        {
-            const color_attachments = [_]wgpu.RenderPassColorAttachment{.{
-                .view = back_buffer_view,
-                .load_op = .load,
-                .store_op = .store,
-            }};
-            const render_pass_info = wgpu.RenderPassDescriptor{
-                .color_attachment_count = color_attachments.len,
-                .color_attachments = &color_attachments,
-            };
-            const pass = encoder.beginRenderPass(render_pass_info);
-            defer {
-                pass.end();
-                pass.release();
-            }
-
-            zgui.backend.draw(pass);
+            pass.setVertexBuffer(0, gctx.lookupResource(state.vertex_buffer).?, 0, @sizeOf(Vertex) * vertices.len);
+            pass.setIndexBuffer(gctx.lookupResource(state.index_buffer).?, .uint16, 0, @sizeOf(u16) * indices.len);
+            pass.drawIndexed(indices.len, 1, 0, 0, 0);
         }
 
         break :commands encoder.finish(null);
@@ -283,7 +266,7 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var allocator = gpa.allocator();
+    const allocator = gpa.allocator();
 
     var state = try init(allocator, window);
     defer deinit(allocator, &state);
@@ -296,7 +279,7 @@ pub fn main() !void {
     zgui.init(allocator);
     defer zgui.deinit();
 
-    updateVoxelData(&state, &allocator);
+    // updateVoxelData(&state, &allocator);
 
     _ = zgui.io.addFontFromFile(content_dir ++ "Roboto-Medium.ttf", math.floor(16.0 * scale_factor));
 
@@ -310,8 +293,15 @@ pub fn main() !void {
 
     zgui.getStyle().scaleAllSizes(scale_factor);
 
+    var last_time: f64 = zglfw.getTime();
+
     while (!window.shouldClose() and window.getKey(.escape) != .press) {
+        const current_time = zglfw.getTime();
+        const delta_time: f32 = @floatCast(current_time - last_time);
+        last_time = current_time;
+
         zglfw.pollEvents();
+        state.camera.update(window, delta_time);
         update(&state);
         draw(&state);
     }
