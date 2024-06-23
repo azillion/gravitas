@@ -51,14 +51,7 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
     );
     errdefer gctx.destroy(allocator);
 
-    const cam = camera.Camera{
-        .position = zmath.f32x4(3.0, 3.0, 3.0, 1.0),
-        .front = zmath.normalize3(zmath.f32x4(-3.0, -3.0, -3.0, 0.0)),
-        .up = zmath.f32x4(0.0, 1.0, 0.0, 0.0),
-        .right = zmath.normalize3(zmath.cross3(zmath.f32x4(-3.0, -3.0, -3.0, 0.0), zmath.f32x4(0.0, 1.0, 0.0, 0.0))),
-        .yaw = -135.0,
-        .pitch = -30.0,
-    };
+    const cam = camera.Camera.init();
 
     // Create vertex buffer
     const vertex_buffer = gctx.createBuffer(.{
@@ -246,6 +239,37 @@ fn draw(state: *State) void {
     _ = gctx.present();
 }
 
+fn mouseCallback(window: *zglfw.Window, xpos: f64, ypos: f64) callconv(.C) void {
+    const state = window.getUserPointer(State) orelse return;
+    var cam = &state.camera;
+
+    const x = @as(f32, @floatCast(xpos));
+    const y = @as(f32, @floatCast(ypos));
+
+    if (cam.first_mouse) {
+        cam.last_x = x;
+        cam.last_y = y;
+        cam.first_mouse = false;
+    }
+
+    const xoffset = (x - cam.last_x) * cam.sensitivity;
+    const yoffset = (cam.last_y - y) * cam.sensitivity; // Reversed since y-coordinates range from bottom to top
+    cam.last_x = x;
+    cam.last_y = y;
+
+    cam.yaw += xoffset;
+    cam.pitch += yoffset;
+
+    // Constrain the pitch
+    cam.pitch = std.math.clamp(cam.pitch, -89.0, 89.0);
+
+    // Update front, right and up Vectors using the updated Euler angles
+    const front = zmath.normalize3(zmath.f32x4(@cos(math.degreesToRadians(cam.yaw)) * @cos(math.degreesToRadians(cam.pitch)), @sin(math.degreesToRadians(cam.pitch)), @sin(math.degreesToRadians(cam.yaw)) * @cos(math.degreesToRadians(cam.pitch)), 0.0));
+    cam.front = front;
+    cam.right = zmath.normalize3(zmath.cross3(front, zmath.f32x4(0.0, 1.0, 0.0, 0.0)));
+    cam.up = zmath.normalize3(zmath.cross3(cam.right, front));
+}
+
 pub fn main() !void {
     try zglfw.init();
     defer zglfw.terminate();
@@ -292,6 +316,10 @@ pub fn main() !void {
     defer zgui.backend.deinit();
 
     zgui.getStyle().scaleAllSizes(scale_factor);
+
+    window.setUserPointer(&state);
+    _ = window.setCursorPosCallback(mouseCallback);
+    window.setInputMode(.cursor, .disabled);
 
     var last_time: f64 = zglfw.getTime();
 

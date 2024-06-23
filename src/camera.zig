@@ -9,6 +9,25 @@ pub const Camera = struct {
     right: zmath.F32x4,
     yaw: f32,
     pitch: f32,
+    last_x: f32,
+    last_y: f32,
+    sensitivity: f32,
+    first_mouse: bool,
+
+    pub fn init() Camera {
+        return .{
+            .position = zmath.f32x4(3.0, 3.0, 3.0, 1.0),
+            .front = zmath.normalize3(zmath.f32x4(-3.0, -3.0, -3.0, 0.0)),
+            .up = zmath.f32x4(0.0, 1.0, 0.0, 0.0),
+            .right = zmath.normalize3(zmath.cross3(zmath.f32x4(-3.0, -3.0, -3.0, 0.0), zmath.f32x4(0.0, 1.0, 0.0, 0.0))),
+            .yaw = -135.0,
+            .pitch = -30.0,
+            .last_x = 0,
+            .last_y = 0,
+            .sensitivity = 0.1,
+            .first_mouse = true,
+        };
+    }
 
     pub fn update(self: *Camera, window: *zglfw.Window, delta_time: f32) void {
         const speed = zmath.f32x4s(10.0);
