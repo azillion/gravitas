@@ -54,10 +54,8 @@ pub const SparseVoxelOctree = struct {
             return null;
         }
 
-        const half_size = size / 2;
-        const child_index = @as(usize, @intCast(((x >= half_size) << 2) |
-            ((y >= half_size) << 1) |
-            (z >= half_size)));
+        const child_index = SparseVoxelOctree.getChildIndex(x, y, z, size);
+        const half_size = @divTrunc(size, 2);
 
         if (node.children) |children| {
             const child = children[child_index];
