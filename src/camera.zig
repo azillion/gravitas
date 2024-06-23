@@ -24,34 +24,55 @@ pub const Camera = struct {
             .pitch = -30.0,
             .last_x = 0,
             .last_y = 0,
-            .sensitivity = 0.1,
+            .sensitivity = 0.01,
             .first_mouse = true,
         };
     }
 
     pub fn update(self: *Camera, window: *zglfw.Window, delta_time: f32) void {
         const speed = zmath.f32x4s(10.0);
-        const delta_time_vec = zmath.f32x4s(delta_time); // Convert delta_time to a vector
+        const delta_time_vec = zmath.f32x4s(delta_time);
         const transform = zmath.mul(zmath.rotationX(self.pitch), zmath.rotationY(self.yaw));
-        var forward = zmath.normalize3(zmath.mul(zmath.f32x4(0.0, 0.0, 1.0, 0.0), transform));
 
-        // Direct component-wise multiplication
-        const right = zmath.normalize3(zmath.cross3(zmath.f32x4(0.0, 1.0, 0.0, 0.0), forward)) * speed * delta_time_vec;
-        forward *= speed * delta_time_vec; // Simplified multiplication
+        // Forward vector (for W/S movement)
+        const forward = zmath.normalize3(zmath.mul(zmath.f32x4(0.0, 0.0, -1.0, 0.0), transform));
+
+        // Right vector (for A/D movement)
+        const right = zmath.normalize3(zmath.cross3(forward, zmath.f32x4(0.0, 1.0, 0.0, 0.0)));
+
+        // Up vector (for Space/Left Shift movement)
+        const up = zmath.f32x4(0.0, 1.0, 0.0, 0.0);
+
+        // Scale movement vectors
+        const scaled_forward = forward * speed * delta_time_vec;
+        const scaled_right = right * speed * delta_time_vec;
+        const scaled_up = up * speed * delta_time_vec;
 
         var cam_pos = zmath.loadArr4(self.position);
 
         if (window.getKey(.w) == .press) {
-            cam_pos += forward;
+            cam_pos += scaled_forward;
         } else if (window.getKey(.s) == .press) {
-            cam_pos -= forward;
+            cam_pos -= scaled_forward;
         }
+
         if (window.getKey(.d) == .press) {
-            cam_pos += right;
+            cam_pos += scaled_right;
         } else if (window.getKey(.a) == .press) {
-            cam_pos -= right;
+            cam_pos -= scaled_right;
+        }
+
+        if (window.getKey(.space) == .press) {
+            cam_pos += scaled_up;
+        } else if (window.getKey(.left_shift) == .press) {
+            cam_pos -= scaled_up;
         }
 
         zmath.storeArr4(&self.position, cam_pos);
+
+        // Update front vector
+        self.front = zmath.normalize3(forward);
+        // Update right vector
+        self.right = zmath.normalize3(right);
     }
 };
