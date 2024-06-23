@@ -16,12 +16,12 @@ pub const Camera = struct {
 
     pub fn init() Camera {
         return .{
-            .position = zmath.f32x4(3.0, 3.0, 3.0, 1.0),
-            .front = zmath.normalize3(zmath.f32x4(-3.0, -3.0, -3.0, 0.0)),
+            .position = zmath.f32x4(2.0, 2.0, 2.0, 1.0),
+            .front = zmath.normalize3(zmath.f32x4(-1.0, -1.0, -1.0, 0.0)),
             .up = zmath.f32x4(0.0, 1.0, 0.0, 0.0),
-            .right = zmath.normalize3(zmath.cross3(zmath.f32x4(-3.0, -3.0, -3.0, 0.0), zmath.f32x4(0.0, 1.0, 0.0, 0.0))),
+            .right = zmath.normalize3(zmath.cross3(zmath.f32x4(-1.0, -1.0, -1.0, 0.0), zmath.f32x4(0.0, 1.0, 0.0, 0.0))),
             .yaw = -135.0,
-            .pitch = -30.0,
+            .pitch = -35.264, // arctan(1/√2) in degrees, for isometric-like view
             .last_x = 0,
             .last_y = 0,
             .sensitivity = 0.01,

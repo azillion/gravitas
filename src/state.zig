@@ -9,6 +9,7 @@ pub const State = struct {
     vertex_buffer: zgpu.BufferHandle,
     index_buffer: zgpu.BufferHandle,
     mvp_buffer: zgpu.BufferHandle,
+    model_buffer: zgpu.BufferHandle,
     camera: camera.Camera,
 
     frame_times: std.ArrayList(f32),

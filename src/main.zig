@@ -6,7 +6,7 @@ const wgpu = zgpu.wgpu;
 const zgui = @import("zgui");
 const zmath = @import("zmath");
 const svo = @import("svo/octree.zig");
-const Voxel = @import("svo/voxel.zig").Voxel;
+const Voxel = @import("svo/voxel.zig").SimpleVoxel;
 const camera = @import("camera.zig");
 const State = @import("state.zig").State;
 
@@ -19,16 +19,55 @@ const wgsl_fs = @embedFile("shaders/simple.fs.wgsl");
 const Vertex = struct {
     position: [3]f32,
     color: [3]f32,
+    normal: [3]f32,
 };
 
 const vertices = [_]Vertex{
-    .{ .position = .{ -0.5, -0.5, 0.0 }, .color = .{ 1.0, 0.0, 0.0 } },
-    .{ .position = .{ 0.5, -0.5, 0.0 }, .color = .{ 0.0, 1.0, 0.0 } },
-    .{ .position = .{ 0.5, 0.5, 0.0 }, .color = .{ 0.0, 0.0, 1.0 } },
-    .{ .position = .{ -0.5, 0.5, 0.0 }, .color = .{ 1.0, 1.0, 0.0 } },
+    // Front face (normal: 0, 0, 1)
+    .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 1.0, 0.0, 0.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
+    .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 1.0, 0.0, 0.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
+    .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 1.0, 0.0, 0.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
+    .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 1.0, 0.0, 0.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
+
+    // Back face (normal: 0, 0, -1)
+    .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
+    .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
+    .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
+    .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
+
+    // Top face (normal: 0, 1, 0)
+    .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 0.0, 0.0, 1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
+    .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 0.0, 0.0, 1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
+    .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
+    .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
+
+    // Bottom face (normal: 0, -1, 0)
+    .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 1.0, 1.0, 0.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
+    .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 1.0, 1.0, 0.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
+    .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 1.0, 1.0, 0.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
+    .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 1.0, 1.0, 0.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
+
+    // Right face (normal: 1, 0, 0)
+    .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 1.0, 0.0, 1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
+    .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 1.0, 0.0, 1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
+    .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 1.0, 0.0, 1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
+    .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 1.0, 0.0, 1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
+
+    // Left face (normal: -1, 0, 0)
+    .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 0.0, 1.0, 1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
+    .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 0.0, 1.0, 1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
+    .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 0.0, 1.0, 1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
+    .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 0.0, 1.0, 1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
 };
 
-const indices = [_]u16{ 0, 1, 2, 0, 2, 3 };
+const indices = [_]u16{
+    0, 1, 2, 0, 2, 3, // front
+    4, 5, 6, 4, 6, 7, // back
+    8, 9, 10, 8, 10, 11, // top
+    12, 13, 14, 12, 14, 15, // bottom
+    16, 17, 18, 16, 18, 19, // right
+    20, 21, 22, 20, 22, 23, // left
+};
 
 fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
     // var octree = try svo.SparseVoxelOctree.init(allocator, 8); // 8 levels of detail
@@ -73,9 +112,15 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         .size = @sizeOf(zmath.Mat),
     });
 
+    const model_buffer = gctx.createBuffer(.{
+        .usage = .{ .copy_dst = true, .uniform = true },
+        .size = @sizeOf(zmath.Mat),
+    });
+
     // Create bind group layout and pipeline
     const bind_group_layout = gctx.createBindGroupLayout(&.{
         zgpu.bufferEntry(0, .{ .vertex = true }, .uniform, false, 0),
+        zgpu.bufferEntry(1, .{ .vertex = true }, .uniform, false, 0),
     });
     defer gctx.releaseResource(bind_group_layout);
 
@@ -96,6 +141,7 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         const vertex_attributes = [_]wgpu.VertexAttribute{
             .{ .format = .float32x3, .offset = 0, .shader_location = 0 },
             .{ .format = .float32x3, .offset = @offsetOf(Vertex, "color"), .shader_location = 1 },
+            .{ .format = .float32x3, .offset = @offsetOf(Vertex, "normal"), .shader_location = 2 },
         };
 
         const vertex_buffers = [_]wgpu.VertexBufferLayout{.{
@@ -128,6 +174,7 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
 
     const bind_group = gctx.createBindGroup(bind_group_layout, &.{
         .{ .binding = 0, .buffer_handle = mvp_buffer, .offset = 0, .size = @sizeOf(zmath.Mat) },
+        .{ .binding = 1, .buffer_handle = model_buffer, .offset = 0, .size = @sizeOf(zmath.Mat) },
     });
 
     return State{
@@ -137,6 +184,7 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         .vertex_buffer = vertex_buffer,
         .index_buffer = index_buffer,
         .mvp_buffer = mvp_buffer,
+        .model_buffer = model_buffer,
         .camera = cam,
         .frame_times = std.ArrayList(f32).init(allocator),
         .last_frame_time = zglfw.getTime(),
@@ -185,9 +233,6 @@ fn update(state: *State) void {
     );
 
     showDebugWindow(state);
-
-    // zgui.showDemoWindow(null);
-
 }
 
 fn updateVoxelData(state: *State, allocator: *std.mem.Allocator) void {
@@ -224,14 +269,15 @@ fn draw(state: *State) void {
 
     // Update MVP matrix
     const cam_world_to_view = zmath.lookAtLh(state.camera.position, state.camera.position + state.camera.front, state.camera.up);
-    const cam_view_to_clip = zmath.perspectiveFovLh(
-        0.25 * math.pi,
-        @as(f32, @floatFromInt(gctx.swapchain_descriptor.width)) / @as(f32, @floatFromInt(gctx.swapchain_descriptor.height)),
-        0.01,
-        100.0,
+    const cam_view_to_clip = zmath.perspectiveFovLh(0.25 * math.pi, // 45 degrees field of view
+        @as(f32, @floatFromInt(gctx.swapchain_descriptor.width)) / @as(f32, @floatFromInt(gctx.swapchain_descriptor.height)), 0.1, // Near clipping plane
+        100.0 // Far clipping plane
     );
     const mvp = zmath.mul(cam_world_to_view, cam_view_to_clip);
     gctx.queue.writeBuffer(gctx.lookupResource(state.mvp_buffer).?, 0, zmath.Mat, &.{mvp});
+
+    const model = zmath.translation(0.0, 0.0, 0.0);
+    gctx.queue.writeBuffer(gctx.lookupResource(state.model_buffer).?, 0, zmath.Mat, &.{model});
 
     const back_buffer_view = gctx.swapchain.getCurrentTextureView();
     defer back_buffer_view.release();
