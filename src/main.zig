@@ -138,13 +138,44 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         .index_buffer = index_buffer,
         .mvp_buffer = mvp_buffer,
         .camera = cam,
+        .frame_times = std.ArrayList(f32).init(allocator),
+        .last_frame_time = zglfw.getTime(),
     };
 }
 
 fn deinit(allocator: std.mem.Allocator, state: *State) void {
     // state.octree.deinit();
+    state.frame_times.deinit();
     state.gctx.destroy(allocator);
     state.* = undefined;
+}
+
+fn showDebugWindow(state: *State) void {
+    const current_time = zglfw.getTime();
+    const frame_time = current_time - state.last_frame_time;
+    state.last_frame_time = current_time;
+
+    state.frame_times.append(@floatCast(frame_time)) catch {};
+    if (state.frame_times.items.len > 100) {
+        _ = state.frame_times.orderedRemove(0);
+    }
+
+    var avg_frame_time: f32 = 0;
+    for (state.frame_times.items) |time| {
+        avg_frame_time += time;
+    }
+    avg_frame_time /= @as(f32, @floatFromInt(state.frame_times.items.len));
+
+    const fps = 1.0 / avg_frame_time;
+
+    zgui.setNextWindowPos(.{ .x = 10, .y = 10 });
+    zgui.setNextWindowSize(.{ .w = 300, .h = 150, .cond = .always });
+
+    if (zgui.begin("Debug Info", .{ .flags = .{ .no_move = true, .no_resize = true } })) {
+        zgui.text("Frame Time: {d:.3} ms", .{avg_frame_time * 1000});
+        zgui.text("FPS: {d:.1}", .{fps});
+    }
+    defer zgui.end();
 }
 
 fn update(state: *State) void {
@@ -153,9 +184,10 @@ fn update(state: *State) void {
         state.gctx.swapchain_descriptor.height,
     );
 
-    zgui.showDemoWindow(null);
+    showDebugWindow(state);
 
-    zgui.render();
+    // zgui.showDemoWindow(null);
+
 }
 
 fn updateVoxelData(state: *State, allocator: *std.mem.Allocator) void {
@@ -229,6 +261,7 @@ fn draw(state: *State) void {
             pass.setVertexBuffer(0, gctx.lookupResource(state.vertex_buffer).?, 0, @sizeOf(Vertex) * vertices.len);
             pass.setIndexBuffer(gctx.lookupResource(state.index_buffer).?, .uint16, 0, @sizeOf(u16) * indices.len);
             pass.drawIndexed(indices.len, 1, 0, 0, 0);
+            zgui.backend.draw(pass);
         }
 
         break :commands encoder.finish(null);
