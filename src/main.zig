@@ -8,119 +8,73 @@ const zmath = @import("zmath");
 const svo = @import("svo/octree.zig");
 const Voxel = @import("svo/voxel.zig").SimpleVoxel;
 const camera = @import("camera.zig");
+const CameraUniform = camera.CameraUniform;
 const State = @import("state.zig").State;
 
 const content_dir = "assets/";
 const window_title = "Gravitas Engine";
 
-const wgsl_vs = @embedFile("shaders/simple.vs.wgsl");
-const wgsl_fs = @embedFile("shaders/simple.fs.wgsl");
+const wgsl_vs = @embedFile("shaders/basic_raymarcher.vs.wgsl");
+const wgsl_fs = @embedFile("shaders/basic_raymarcher.fs.wgsl");
 
 const Vertex = struct {
     position: [3]f32,
-    color: [3]f32,
-    normal: [3]f32,
+    uv: [2]f32,
 };
 
 const vertices = [_]Vertex{
-    // Front face (normal: 0, 0, 1)
-    .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 1.0, 0.0, 0.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
-    .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 1.0, 0.0, 0.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
-    .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 1.0, 0.0, 0.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
-    .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 1.0, 0.0, 0.0 }, .normal = .{ 0.0, 0.0, 1.0 } },
-
-    // Back face (normal: 0, 0, -1)
-    .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
-    .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
-    .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
-    .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 0.0, 1.0, 0.0 }, .normal = .{ 0.0, 0.0, -1.0 } },
-
-    // Top face (normal: 0, 1, 0)
-    .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 0.0, 0.0, 1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
-    .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 0.0, 0.0, 1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
-    .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
-    .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 0.0, 0.0, 1.0 }, .normal = .{ 0.0, 1.0, 0.0 } },
-
-    // Bottom face (normal: 0, -1, 0)
-    .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 1.0, 1.0, 0.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
-    .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 1.0, 1.0, 0.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
-    .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 1.0, 1.0, 0.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
-    .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 1.0, 1.0, 0.0 }, .normal = .{ 0.0, -1.0, 0.0 } },
-
-    // Right face (normal: 1, 0, 0)
-    .{ .position = .{ 0.5, -0.5, -0.5 }, .color = .{ 1.0, 0.0, 1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
-    .{ .position = .{ 0.5, 0.5, -0.5 }, .color = .{ 1.0, 0.0, 1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
-    .{ .position = .{ 0.5, 0.5, 0.5 }, .color = .{ 1.0, 0.0, 1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
-    .{ .position = .{ 0.5, -0.5, 0.5 }, .color = .{ 1.0, 0.0, 1.0 }, .normal = .{ 1.0, 0.0, 0.0 } },
-
-    // Left face (normal: -1, 0, 0)
-    .{ .position = .{ -0.5, -0.5, -0.5 }, .color = .{ 0.0, 1.0, 1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
-    .{ .position = .{ -0.5, 0.5, -0.5 }, .color = .{ 0.0, 1.0, 1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
-    .{ .position = .{ -0.5, 0.5, 0.5 }, .color = .{ 0.0, 1.0, 1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
-    .{ .position = .{ -0.5, -0.5, 0.5 }, .color = .{ 0.0, 1.0, 1.0 }, .normal = .{ -1.0, 0.0, 0.0 } },
+    .{ .position = .{ -1.0, -1.0, 0.0 }, .uv = .{ 0.0, 0.0 } },
+    .{ .position = .{ 1.0, -1.0, 0.0 }, .uv = .{ 1.0, 0.0 } },
+    .{ .position = .{ 1.0, 1.0, 0.0 }, .uv = .{ 1.0, 1.0 } },
+    .{ .position = .{ -1.0, 1.0, 0.0 }, .uv = .{ 0.0, 1.0 } },
 };
 
-const indices = [_]u16{
-    0, 1, 2, 0, 2, 3, // front
-    4, 5, 6, 4, 6, 7, // back
-    8, 9, 10, 8, 10, 11, // top
-    12, 13, 14, 12, 14, 15, // bottom
-    16, 17, 18, 16, 18, 19, // right
-    20, 21, 22, 20, 22, 23, // left
-};
+const indices = [_]u16{ 0, 1, 2, 0, 2, 3 };
 
 fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
-    // var octree = try svo.SparseVoxelOctree.init(allocator, 8); // 8 levels of detail
-    // try octree.generateSimpleTerrain(256, 256, 256);
-
-    const gctx = try zgpu.GraphicsContext.create(
-        allocator,
-        .{
-            .window = window,
-            .fn_getTime = @ptrCast(&zglfw.getTime),
-            .fn_getFramebufferSize = @ptrCast(&zglfw.Window.getFramebufferSize),
-            .fn_getWin32Window = @ptrCast(&zglfw.getWin32Window),
-            .fn_getX11Display = @ptrCast(&zglfw.getX11Display),
-            .fn_getX11Window = @ptrCast(&zglfw.getX11Window),
-            .fn_getWaylandDisplay = @ptrCast(&zglfw.getWaylandDisplay),
-            .fn_getWaylandSurface = @ptrCast(&zglfw.getWaylandWindow),
-            .fn_getCocoaWindow = @ptrCast(&zglfw.getCocoaWindow),
-        },
-        .{},
-    );
+    const gctx = try zgpu.GraphicsContext.create(allocator, .{
+        .window = window,
+        .fn_getTime = @ptrCast(&zglfw.getTime),
+        .fn_getFramebufferSize = @ptrCast(&zglfw.Window.getFramebufferSize),
+        .fn_getWin32Window = @ptrCast(&zglfw.getWin32Window),
+        .fn_getX11Display = @ptrCast(&zglfw.getX11Display),
+        .fn_getX11Window = @ptrCast(&zglfw.getX11Window),
+        .fn_getWaylandDisplay = @ptrCast(&zglfw.getWaylandDisplay),
+        .fn_getWaylandSurface = @ptrCast(&zglfw.getWaylandWindow),
+        .fn_getCocoaWindow = @ptrCast(&zglfw.getCocoaWindow),
+    }, .{});
     errdefer gctx.destroy(allocator);
 
     const cam = camera.Camera.init();
 
-    // Create vertex buffer
-    const vertex_buffer = gctx.createBuffer(.{
-        .usage = .{ .copy_dst = true, .vertex = true },
-        .size = @sizeOf(@TypeOf(vertices)),
-    });
-    gctx.queue.writeBuffer(gctx.lookupResource(vertex_buffer).?, 0, Vertex, &vertices);
-
-    // Create index buffer
-    const index_buffer = gctx.createBuffer(.{
-        .usage = .{ .copy_dst = true, .index = true },
-        .size = @sizeOf(@TypeOf(indices)),
-    });
-    gctx.queue.writeBuffer(gctx.lookupResource(index_buffer).?, 0, u16, &indices);
-
-    // Create MVP buffer
-    const mvp_buffer = gctx.createBuffer(.{
+    const camera_buffer = gctx.createBuffer(.{
         .usage = .{ .copy_dst = true, .uniform = true },
-        .size = @sizeOf(zmath.Mat),
+        .size = @sizeOf(CameraUniform),
     });
 
-    const model_buffer = gctx.createBuffer(.{
-        .usage = .{ .copy_dst = true, .uniform = true },
-        .size = @sizeOf(zmath.Mat),
+    const voxel_texture = gctx.createTexture(.{
+        .size = .{
+            .width = 32,
+            .height = 32,
+            .depth_or_array_layers = 32,
+        },
+        .format = .rgba8_uint,
+        .usage = .{ .texture_binding = true, .copy_dst = true },
+        .dimension = .tdim_3d,
     });
 
-    // Create bind group layout and pipeline
+    const voxel_texture_view = gctx.createTextureView(voxel_texture, .{
+        .format = .rgba8_uint,
+        .dimension = .tvdim_3d,
+        .base_mip_level = 0,
+        .mip_level_count = 1,
+        .base_array_layer = 0,
+        .array_layer_count = 1, // Changed from 32 to 1
+    });
+
     const bind_group_layout = gctx.createBindGroupLayout(&.{
-        zgpu.bufferEntry(0, .{ .vertex = true }, .uniform, false, 0),
-        zgpu.bufferEntry(1, .{ .vertex = true }, .uniform, false, 0),
+        zgpu.bufferEntry(0, .{ .vertex = true, .fragment = true }, .uniform, false, 0),
+        zgpu.textureEntry(1, .{ .fragment = true }, .uint, .tvdim_3d, false),
     });
     defer gctx.releaseResource(bind_group_layout);
 
@@ -138,24 +92,12 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
             .format = zgpu.GraphicsContext.swapchain_format,
         }};
 
-        const vertex_attributes = [_]wgpu.VertexAttribute{
-            .{ .format = .float32x3, .offset = 0, .shader_location = 0 },
-            .{ .format = .float32x3, .offset = @offsetOf(Vertex, "color"), .shader_location = 1 },
-            .{ .format = .float32x3, .offset = @offsetOf(Vertex, "normal"), .shader_location = 2 },
-        };
-
-        const vertex_buffers = [_]wgpu.VertexBufferLayout{.{
-            .array_stride = @sizeOf(Vertex),
-            .attribute_count = vertex_attributes.len,
-            .attributes = &vertex_attributes,
-        }};
-
         const pipeline_descriptor = wgpu.RenderPipelineDescriptor{
             .vertex = wgpu.VertexState{
                 .module = vs_module,
                 .entry_point = "vs_main",
-                .buffer_count = vertex_buffers.len,
-                .buffers = &vertex_buffers,
+                .buffer_count = 0,
+                .buffers = null,
             },
             .primitive = wgpu.PrimitiveState{
                 .front_face = .ccw,
@@ -171,28 +113,30 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         };
         break :pipelines gctx.createRenderPipeline(pipeline_layout, pipeline_descriptor);
     };
-
     const bind_group = gctx.createBindGroup(bind_group_layout, &.{
-        .{ .binding = 0, .buffer_handle = mvp_buffer, .offset = 0, .size = @sizeOf(zmath.Mat) },
-        .{ .binding = 1, .buffer_handle = model_buffer, .offset = 0, .size = @sizeOf(zmath.Mat) },
+        .{ .binding = 0, .buffer_handle = camera_buffer, .offset = 0, .size = @sizeOf(CameraUniform) },
+        .{ .binding = 1, .texture_view_handle = voxel_texture_view },
     });
+
+    var octree = try svo.SparseVoxelOctree.init(allocator, 8); // 8 levels of detail
+    try octree.generateSimpleTerrain(256, 256, 256);
 
     return State{
         .gctx = gctx,
         .pipeline = pipeline,
         .bind_group = bind_group,
-        .vertex_buffer = vertex_buffer,
-        .index_buffer = index_buffer,
-        .mvp_buffer = mvp_buffer,
-        .model_buffer = model_buffer,
+        .camera_buffer = camera_buffer,
+        .voxel_texture = voxel_texture,
+        .voxel_texture_view = voxel_texture_view,
         .camera = cam,
         .frame_times = std.ArrayList(f32).init(allocator),
         .last_frame_time = zglfw.getTime(),
+        .octree = octree,
     };
 }
 
 fn deinit(allocator: std.mem.Allocator, state: *State) void {
-    // state.octree.deinit();
+    state.octree.deinit();
     state.frame_times.deinit();
     state.gctx.destroy(allocator);
     state.* = undefined;
@@ -264,20 +208,53 @@ fn updateVoxelData(state: *State, allocator: *std.mem.Allocator) void {
     );
 }
 
+fn updateVoxelTexture(state: *State) void {
+    var data: [32 * 32 * 32 * 4]u8 = undefined;
+    var index: usize = 0;
+    for (0..32) |z| {
+        for (0..32) |y| {
+            for (0..32) |x| {
+                if (x < 16 and y < 16 and z < 16) {
+                    // Create a solid cube in the first octant
+                    data[index] = 255;
+                    data[index + 1] = 0;
+                    data[index + 2] = 0;
+                    data[index + 3] = 255;
+                } else {
+                    data[index] = 0;
+                    data[index + 1] = 0;
+                    data[index + 2] = 0;
+                    data[index + 3] = 0;
+                }
+                index += 4;
+            }
+        }
+    }
+
+    state.gctx.queue.writeTexture(
+        .{ .texture = state.gctx.lookupResource(state.voxel_texture).? },
+        .{
+            .bytes_per_row = 32 * 4,
+            .rows_per_image = 32,
+        },
+        .{
+            .width = 32,
+            .height = 32,
+            .depth_or_array_layers = 32,
+        },
+        u8,
+        &data,
+    );
+}
+
 fn draw(state: *State) void {
     const gctx = state.gctx;
 
-    // Update MVP matrix
-    const cam_world_to_view = zmath.lookAtLh(state.camera.position, state.camera.position + state.camera.front, state.camera.up);
-    const cam_view_to_clip = zmath.perspectiveFovLh(0.25 * math.pi, // 45 degrees field of view
-        @as(f32, @floatFromInt(gctx.swapchain_descriptor.width)) / @as(f32, @floatFromInt(gctx.swapchain_descriptor.height)), 0.1, // Near clipping plane
-        100.0 // Far clipping plane
-    );
-    const mvp = zmath.mul(cam_world_to_view, cam_view_to_clip);
-    gctx.queue.writeBuffer(gctx.lookupResource(state.mvp_buffer).?, 0, zmath.Mat, &.{mvp});
+    const camera_data: CameraUniform = state.camera.getShaderData();
+    const camera_data_slice: [1]CameraUniform = .{camera_data};
+    gctx.queue.writeBuffer(gctx.lookupResource(state.camera_buffer).?, 0, CameraUniform, &camera_data_slice);
 
-    const model = zmath.translation(0.0, 0.0, 0.0);
-    gctx.queue.writeBuffer(gctx.lookupResource(state.model_buffer).?, 0, zmath.Mat, &.{model});
+    updateVoxelTexture(state);
 
     const back_buffer_view = gctx.swapchain.getCurrentTextureView();
     defer back_buffer_view.release();
@@ -304,9 +281,7 @@ fn draw(state: *State) void {
 
             pass.setPipeline(gctx.lookupResource(state.pipeline).?);
             pass.setBindGroup(0, gctx.lookupResource(state.bind_group).?, &.{});
-            pass.setVertexBuffer(0, gctx.lookupResource(state.vertex_buffer).?, 0, @sizeOf(Vertex) * vertices.len);
-            pass.setIndexBuffer(gctx.lookupResource(state.index_buffer).?, .uint16, 0, @sizeOf(u16) * indices.len);
-            pass.drawIndexed(indices.len, 1, 0, 0, 0);
+            pass.draw(3, 1, 0, 0); // Draw 3 vertices for a full-screen triangle
             zgui.backend.draw(pass);
         }
 

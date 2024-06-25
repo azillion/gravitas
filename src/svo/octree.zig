@@ -95,6 +95,58 @@ pub const SparseVoxelOctree = struct {
             @as(u3, @intFromBool(z >= half_size)));
     }
 
+    pub fn intersect(self: *const SparseVoxelOctree, origin: [3]f32, direction: [3]f32) ?Voxel {
+        return self.intersectRecursive(self.root, origin, direction, 0, 0, 0, @as(i32, 1) << @intCast(self.max_depth - 1));
+    }
+
+    fn intersectRecursive(self: *const SparseVoxelOctree, node: *const OctreeNode, origin: [3]f32, direction: [3]f32, x: i32, y: i32, z: i32, size: i32) ?Voxel {
+        if (node.isLeaf()) {
+            return node.voxel;
+        }
+
+        const half_size = @divTrunc(size, 2);
+        const child_indices = self.getTraversalOrder(origin, direction);
+
+        for (child_indices) |i| {
+            const child_x = x + @as(i32, @intCast(i & 1)) * half_size;
+            const child_y = y + @as(i32, @intCast((i >> 1) & 1)) * half_size;
+            const child_z = z + @as(i32, @intCast((i >> 2) & 1)) * half_size;
+
+            if (node.children) |children| {
+                if (self.intersectRecursive(children[i], origin, direction, child_x, child_y, child_z, half_size)) |voxel| {
+                    return voxel;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    fn getTraversalOrder(self: *const SparseVoxelOctree, origin: [3]f32, direction: [3]f32) [8]u8 {
+        _ = self;
+        var order: [8]u8 = undefined;
+        var index: usize = 0;
+
+        for (0..8) |i| {
+            const x = @as(i32, @intCast(i & 1));
+            const y = @as(i32, @intCast((i >> 1) & 1));
+            const z = @as(i32, @intCast((i >> 2) & 1));
+
+            const t_x: f32 = if (direction[0] != 0) (@as(f32, @floatFromInt(x)) - origin[0]) / direction[0] else std.math.inf(f32);
+            const t_y = if (direction[1] != 0) (@as(f32, @floatFromInt(y)) - origin[1]) / direction[1] else std.math.inf(f32);
+            const t_z = if (direction[2] != 0) (@as(f32, @floatFromInt(z)) - origin[2]) / direction[2] else std.math.inf(f32);
+
+            const t = @min(t_x, @min(t_y, t_z));
+
+            if (t >= 0) {
+                order[index] = @intCast(i);
+                index += 1;
+            }
+        }
+
+        return order;
+    }
+
     pub fn generateSimpleTerrain(self: *SparseVoxelOctree, width: i32, height: i32, depth: i32) !void {
         var x: i32 = 0;
         while (x < width) : (x += 1) {
