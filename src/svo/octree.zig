@@ -2,6 +2,8 @@ const std = @import("std");
 const Voxel = @import("voxel.zig").Voxel;
 const Allocator = std.mem.Allocator;
 
+// TODO: we need to completely rewrite this
+
 pub const OctreeNode = struct {
     children: ?[]*OctreeNode,
     voxel: ?Voxel,
