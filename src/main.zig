@@ -22,6 +22,7 @@ const Vertex = struct {
     uv: [2]f32,
 };
 
+// set up our ray casting quad
 const vertices = [_]Vertex{
     .{ .position = .{ -1.0, -1.0, 0.0 }, .uv = .{ 0.0, 0.0 } },
     .{ .position = .{ 1.0, -1.0, 0.0 }, .uv = .{ 1.0, 0.0 } },
