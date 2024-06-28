@@ -53,29 +53,8 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         .size = @sizeOf(CameraUniform),
     });
 
-    const voxel_texture = gctx.createTexture(.{
-        .size = .{
-            .width = 32,
-            .height = 32,
-            .depth_or_array_layers = 32,
-        },
-        .format = .rgba8_uint,
-        .usage = .{ .texture_binding = true, .copy_dst = true },
-        .dimension = .tdim_3d,
-    });
-
-    const voxel_texture_view = gctx.createTextureView(voxel_texture, .{
-        .format = .rgba8_uint,
-        .dimension = .tvdim_3d,
-        .base_mip_level = 0,
-        .mip_level_count = 1,
-        .base_array_layer = 0,
-        .array_layer_count = 1, // Changed from 32 to 1
-    });
-
     const bind_group_layout = gctx.createBindGroupLayout(&.{
         zgpu.bufferEntry(0, .{ .vertex = true, .fragment = true }, .uniform, false, 0),
-        zgpu.textureEntry(1, .{ .fragment = true }, .uint, .tvdim_3d, false),
     });
     defer gctx.releaseResource(bind_group_layout);
 
@@ -100,11 +79,6 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
                 .buffer_count = 0,
                 .buffers = null,
             },
-            .primitive = wgpu.PrimitiveState{
-                .front_face = .ccw,
-                .cull_mode = .none,
-                .topology = .triangle_list,
-            },
             .fragment = &wgpu.FragmentState{
                 .module = fs_module,
                 .entry_point = "fs_main",
@@ -116,28 +90,20 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
     };
     const bind_group = gctx.createBindGroup(bind_group_layout, &.{
         .{ .binding = 0, .buffer_handle = camera_buffer, .offset = 0, .size = @sizeOf(CameraUniform) },
-        .{ .binding = 1, .texture_view_handle = voxel_texture_view },
     });
-
-    var octree = try svo.SparseVoxelOctree.init(allocator, 8); // 8 levels of detail
-    try octree.generateSimpleTerrain(256, 256, 256);
 
     return State{
         .gctx = gctx,
         .pipeline = pipeline,
         .bind_group = bind_group,
         .camera_buffer = camera_buffer,
-        .voxel_texture = voxel_texture,
-        .voxel_texture_view = voxel_texture_view,
         .camera = cam,
         .frame_times = std.ArrayList(f32).init(allocator),
         .last_frame_time = zglfw.getTime(),
-        .octree = octree,
     };
 }
 
 fn deinit(allocator: std.mem.Allocator, state: *State) void {
-    state.octree.deinit();
     state.frame_times.deinit();
     state.gctx.destroy(allocator);
     state.* = undefined;
@@ -180,82 +146,12 @@ fn update(state: *State) void {
     showDebugWindow(state);
 }
 
-fn updateVoxelData(state: *State, allocator: *std.mem.Allocator) void {
-    const gctx = state.gctx;
-    var voxel_data = std.ArrayList(u32).init(allocator.*);
-    defer voxel_data.deinit();
-
-    var non_zero_count: usize = 0;
-
-    for (0..256) |z| {
-        for (0..256) |y| {
-            for (0..256) |x| {
-                const voxel = state.octree.getVoxel(@intCast(x), @intCast(y), @intCast(z)) orelse Voxel{ .material = 0 };
-                voxel_data.append(voxel.material) catch unreachable;
-                if (voxel.material != 0) {
-                    non_zero_count += 1;
-                }
-            }
-        }
-    }
-
-    std.debug.print("Non-zero voxels: {}/{}\n", .{ non_zero_count, 256 * 256 * 256 });
-
-    gctx.queue.writeBuffer(
-        gctx.lookupResource(state.voxel_data_buffer).?,
-        0,
-        u32,
-        voxel_data.items,
-    );
-}
-
-fn updateVoxelTexture(state: *State) void {
-    var data: [32 * 32 * 32 * 4]u8 = undefined;
-    var index: usize = 0;
-    for (0..32) |z| {
-        for (0..32) |y| {
-            for (0..32) |x| {
-                if (x < 16 and y < 16 and z < 16) {
-                    // Create a solid cube in the first octant
-                    data[index] = 255;
-                    data[index + 1] = 0;
-                    data[index + 2] = 0;
-                    data[index + 3] = 255;
-                } else {
-                    data[index] = 0;
-                    data[index + 1] = 0;
-                    data[index + 2] = 0;
-                    data[index + 3] = 0;
-                }
-                index += 4;
-            }
-        }
-    }
-
-    state.gctx.queue.writeTexture(
-        .{ .texture = state.gctx.lookupResource(state.voxel_texture).? },
-        .{
-            .bytes_per_row = 32 * 4,
-            .rows_per_image = 32,
-        },
-        .{
-            .width = 32,
-            .height = 32,
-            .depth_or_array_layers = 32,
-        },
-        u8,
-        &data,
-    );
-}
-
 fn draw(state: *State) void {
     const gctx = state.gctx;
 
     const camera_data: CameraUniform = state.camera.getShaderData();
     const camera_data_slice: [1]CameraUniform = .{camera_data};
     gctx.queue.writeBuffer(gctx.lookupResource(state.camera_buffer).?, 0, CameraUniform, &camera_data_slice);
-
-    updateVoxelTexture(state);
 
     const back_buffer_view = gctx.swapchain.getCurrentTextureView();
     defer back_buffer_view.release();
@@ -357,8 +253,6 @@ pub fn main() !void {
 
     zgui.init(allocator);
     defer zgui.deinit();
-
-    // updateVoxelData(&state, &allocator);
 
     _ = zgui.io.addFontFromFile(content_dir ++ "Roboto-Medium.ttf", math.floor(16.0 * scale_factor));
 

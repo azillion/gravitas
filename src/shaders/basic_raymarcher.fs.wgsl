@@ -98,16 +98,17 @@ fn fs_main_test(in: VertexOutput) -> @location(0) vec4<f32> {
 
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
-    let aspect_ratio = 1600.0 / 1000.0; // Adjust based on your window size
-    let fov_factor = tan(camera.fov * 0.5);
-    
-    let ray_direction = normalize(
-        camera.forward +
-        (in.uv.x * 2.0 - 1.0) * camera.right * fov_factor * aspect_ratio +
-        (1.0 - in.uv.y * 2.0) * camera.up * fov_factor
-    );
+    //let aspect_ratio = 1600.0 / 1000.0; // Adjust based on your window size
+    //let fov_factor = tan(camera.fov * 0.5);
+    //
+    //let ray_direction = normalize(
+    //    camera.forward +
+    //    (in.uv.x * 2.0 - 1.0) * camera.right * fov_factor * aspect_ratio +
+    //    (1.0 - in.uv.y * 2.0) * camera.up * fov_factor
+    //);
 
-    let color = ray_march(camera.position, ray_direction);
+    // let color = ray_march(camera.position, ray_direction);
+    let color = vec4<f32>(0.0, 0.0, 1.0, 1.0);
 
     var output: FragmentOutput;
     output.color = color;
