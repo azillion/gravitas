@@ -251,6 +251,7 @@ pub fn main() !void {
         break :scale_factor @max(scale[0], scale[1]);
     };
 
+    ////////////// gui initialization
     zgui.init(allocator);
     defer zgui.deinit();
 
@@ -263,8 +264,8 @@ pub fn main() !void {
         @intFromEnum(wgpu.TextureFormat.undef),
     );
     defer zgui.backend.deinit();
-
     zgui.getStyle().scaleAllSizes(scale_factor);
+    //////////////////////////
 
     window.setUserPointer(&state);
     _ = window.setCursorPosCallback(mouseCallback);
