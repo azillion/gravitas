@@ -13,6 +13,8 @@ const State = @import("state.zig").State;
 
 const content_dir = "assets/";
 const window_title = "Gravitas Engine";
+const default_window_width = 1600;
+const default_window_height = 1000;
 
 const wgsl_vs = @embedFile("shaders/basic_raymarcher.vs.wgsl");
 const wgsl_fs = @embedFile("shaders/basic_raymarcher.fs.wgsl");
@@ -234,7 +236,7 @@ pub fn main() !void {
 
     zglfw.windowHintTyped(.client_api, .no_api);
 
-    const window = try zglfw.Window.create(1600, 1000, window_title, null);
+    const window = try zglfw.Window.create(default_window_width, default_window_height, window_title, null);
     defer window.destroy();
     window.setSizeLimits(400, 400, -1, -1);
 
@@ -279,8 +281,8 @@ pub fn main() !void {
         last_time = current_time;
 
         zglfw.pollEvents();
-        state.camera.update(window, delta_time);
         update(&state);
+        state.camera.update(window, delta_time);
         draw(&state);
     }
 }
