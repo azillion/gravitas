@@ -3,17 +3,6 @@ const zglfw = @import("zglfw");
 const zmath = @import("zmath");
 const State = @import("state.zig").State;
 
-pub const CameraUniform = struct {
-    position: [3]f32,
-    _pad1: f32, // Padding to ensure 16-byte alignment
-    forward: [3]f32,
-    _pad2: f32,
-    up: [3]f32,
-    _pad3: f32,
-    right: [3]f32,
-    fov: f32,
-};
-
 pub const Camera = struct {
     position: zmath.F32x4,
     front: zmath.F32x4,
@@ -21,6 +10,7 @@ pub const Camera = struct {
     right: zmath.F32x4,
     yaw: f32,
     pitch: f32,
+    fov: f32,
     last_x: f32,
     last_y: f32,
     sensitivity: f32,
@@ -28,29 +18,17 @@ pub const Camera = struct {
 
     pub fn init() Camera {
         return .{
-            .position = zmath.f32x4(1.5, 1.5, 1.5, 1.0),
-            .front = zmath.normalize3(zmath.f32x4(-1.0, -1.0, -1.0, 0.0)),
+            .position = zmath.f32x4(16.0, 25.0, 48.0, 1.0), // Updated position
+            .front = zmath.normalize3(zmath.f32x4(0.0, -0.5, -1.0, 0.0)), // Looking slightly downward
             .up = zmath.f32x4(0.0, 1.0, 0.0, 0.0),
-            .right = zmath.normalize3(zmath.cross3(zmath.f32x4(-1.0, -1.0, -1.0, 0.0), zmath.f32x4(0.0, 1.0, 0.0, 0.0))),
-            .yaw = -135.0,
-            .pitch = -35.264,
+            .right = zmath.normalize3(zmath.cross3(zmath.f32x4(0.0, -0.5, -1.0, 0.0), zmath.f32x4(0.0, 1.0, 0.0, 0.0))),
+            .yaw = -90.0, // Updated yaw
+            .pitch = -15.0, // Updated pitch
+            .fov = 0.25,
             .last_x = 0,
             .last_y = 0,
             .sensitivity = 0.1,
             .first_mouse = true,
-        };
-    }
-
-    pub fn getShaderData(self: *const Camera) CameraUniform {
-        return .{
-            .position = .{ self.position[0], self.position[1], self.position[2] },
-            ._pad1 = 0.0,
-            .forward = .{ self.front[0], self.front[1], self.front[2] },
-            ._pad2 = 0.0,
-            .up = .{ self.up[0], self.up[1], self.up[2] },
-            ._pad3 = 0.0,
-            .right = .{ self.right[0], self.right[1], self.right[2] },
-            .fov = 0.25 * std.math.pi, // 45 degrees in radians
         };
     }
 

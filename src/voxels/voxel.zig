@@ -1,6 +1,7 @@
 pub const Voxel = struct {
-    material: u8,
-    // we can add more fields here
+    color: [3]f32,
+    emission: [3]f32,
+    is_solid: bool,
 };
 
 pub const SimpleVoxel = struct {
