@@ -1,5 +1,6 @@
 pub const Voxel = struct {
     color: [3]f32,
+    _padding1: f32 = 0.0,
     emission: [3]f32,
     is_solid: bool,
 };

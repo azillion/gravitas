@@ -1,23 +1,25 @@
 const std = @import("std");
 
-pub fn readWgslWithIncludes(allocator: std.mem.Allocator, filepath: []const u8) ![]const u8 {
+pub fn readWgslWithIncludes(allocator: std.mem.Allocator, filepath: []const u8) ![:0]const u8 {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
-
     var result = std.ArrayList(u8).init(arena_allocator);
     try processFile(arena_allocator, &result, filepath);
 
-    return allocator.dupe(u8, result.items);
+    // Add null terminator
+    try result.append(0);
+
+    // Duplicate the result into a sentinel-terminated array
+    const duped = try allocator.dupeZ(u8, result.items[0 .. result.items.len - 1]);
+    return duped;
 }
 
 fn processFile(allocator: std.mem.Allocator, result: *std.ArrayList(u8), filepath: []const u8) !void {
     const file = try std.fs.cwd().openFile(filepath, .{});
     defer file.close();
-
     var buf_reader = std.io.bufferedReader(file.reader());
     var in_stream = buf_reader.reader();
-
     var buf: [1024]u8 = undefined;
     while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
         if (std.mem.startsWith(u8, std.mem.trim(u8, line, &std.ascii.whitespace), "//!include")) {

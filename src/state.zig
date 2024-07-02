@@ -1,6 +1,7 @@
 const std = @import("std");
 const zgpu = @import("zgpu");
 const camera = @import("camera.zig");
+const Voxel = @import("voxels/voxel.zig").Voxel;
 
 pub const State = struct {
     gctx: *zgpu.GraphicsContext,
@@ -11,6 +12,7 @@ pub const State = struct {
     window_width: i32,
     window_height: i32,
     camera: camera.Camera,
+    voxels: []Voxel,
     last_x: f32,
     last_y: f32,
     first_mouse: bool,

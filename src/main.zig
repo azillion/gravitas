@@ -14,12 +14,12 @@ const State = @import("state.zig").State;
 const utils = @import("utils.zig");
 
 const content_dir = "assets/";
+const shaders_dir = "src/shaders/";
 const window_title = "Gravitas Engine";
 const default_window_width = 1600;
 const default_window_height = 1000;
 
 const wgsl_vs = @embedFile("shaders/basic_raymarcher.vs.wgsl");
-const wgsl_fs = @embedFile("shaders/basic_pathtrace.fs.wgsl");
 
 const Vertex = struct {
     position: [3]f32,
@@ -60,19 +60,13 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
     }, .{});
     errdefer gctx.destroy(allocator);
 
-    const cam = camera.Camera.init(zmath.f32x4(0.0, 2.0, 10.0, 1.0), // position
+    const cam = camera.Camera.init(camera.getDefaultCameraPosition(), // position
         zmath.f32x4(0.0, 1.0, 0.0, 0.0), // up vector
         -90.0, // yaw
-        -15.0 // pitch
+        -20.0 // pitch
     );
 
-    // const camera_buffer = gctx.createBuffer(.{
-    //     .usage = .{ .copy_dst = true, .uniform = true },
-    //     .size = @sizeOf(CameraUniform),
-    // });
-
     const voxels = try createVoxelGrid(allocator);
-    defer allocator.free(voxels);
 
     const voxel_buffer = gctx.createBuffer(.{
         .usage = .{ .storage = true, .copy_dst = true },
@@ -93,11 +87,17 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
     const pipeline_layout = gctx.createPipelineLayout(&.{bind_group_layout});
     defer gctx.releaseResource(pipeline_layout);
 
+    const wgsl_fs = utils.readWgslWithIncludes(allocator, shaders_dir ++ "basic_pathtrace.fs.wgsl") catch |err| {
+        std.debug.print("Error reading shader: {any}", .{err});
+        return err;
+    };
+    defer allocator.free(wgsl_fs.ptr[0 .. std.mem.len(wgsl_fs.ptr) + 1]); // free the whole buffer + null terminator
+
     const pipeline = pipelines: {
         const vs_module = zgpu.createWgslShaderModule(gctx.device, wgsl_vs, "vs");
         defer vs_module.release();
 
-        const fs_module = zgpu.createWgslShaderModule(gctx.device, wgsl_fs, "fs");
+        const fs_module = zgpu.createWgslShaderModule(gctx.device, wgsl_fs.ptr, "fs");
         defer fs_module.release();
 
         const color_targets = [_]wgpu.ColorTargetState{.{
@@ -137,6 +137,7 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         .window_width = fb_size[0],
         .window_height = fb_size[1],
         .camera = cam,
+        .voxels = voxels,
         .last_x = @as(f32, @floatFromInt(window.getSize()[0])) / 2.0,
         .last_y = @as(f32, @floatFromInt(window.getSize()[1])) / 2.0,
         .first_mouse = true,
@@ -148,6 +149,7 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
 fn deinit(allocator: std.mem.Allocator, state: *State) void {
     state.frame_times.deinit();
     state.gctx.destroy(allocator);
+    allocator.free(state.voxels);
     state.* = undefined;
 }
 
@@ -170,7 +172,7 @@ fn showDebugWindow(state: *State) void {
     const fps = 1.0 / avg_frame_time;
 
     zgui.setNextWindowPos(.{ .x = 10, .y = 10 });
-    zgui.setNextWindowSize(.{ .w = 500, .h = 200, .cond = .always });
+    zgui.setNextWindowSize(.{ .w = 500, .h = 300, .cond = .always });
 
     if (zgui.begin("Debug Info", .{ .flags = .{ .no_move = true, .no_resize = true } })) {
         zgui.text("Frame Time: {d:.3} ms", .{avg_frame_time * 1000});
@@ -180,6 +182,7 @@ fn showDebugWindow(state: *State) void {
             state.camera.position[1],
             state.camera.position[2],
         });
+        zgui.text("Camera Yaw: {d:.3}, Pitch: {d:.3}", .{ state.camera.yaw, state.camera.pitch });
     }
     defer zgui.end();
 }
@@ -239,6 +242,8 @@ fn draw(state: *State) void {
         .time = @floatCast(zglfw.getTime()),
     };
     gctx.queue.writeBuffer(gctx.lookupResource(state.voxel_uniform_buffer).?, 0, VoxelUniform, &.{voxel_uniform});
+
+    gctx.queue.writeBuffer(gctx.lookupResource(state.voxel_buffer).?, 0, Voxel, state.voxels);
 
     const back_buffer_view = gctx.swapchain.getCurrentTextureView();
     defer back_buffer_view.release();
@@ -350,9 +355,9 @@ pub fn main() !void {
     //////////////////////////
 
     window.setUserPointer(&state);
-    // _ = window.setCursorPosCallback(mouseCallback);
+    _ = window.setCursorPosCallback(mouseCallback);
     _ = window.setFramebufferSizeCallback(frameBufferResizeCallback);
-    // window.setInputMode(.cursor, .disabled);
+    window.setInputMode(.cursor, .disabled);
 
     var last_time: f64 = zglfw.getTime();
 

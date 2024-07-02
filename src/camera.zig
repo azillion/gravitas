@@ -4,6 +4,13 @@ const zmath = @import("zmath");
 const math = @import("std").math;
 const State = @import("state.zig").State;
 
+//const DEFAULT_CAMERA_POSITION = zmath.f32x4(16.0, 20.0, 48.0, 1.0);
+const DEFAULT_CAMERA_POSITION = zmath.f32x4(0.0, 0.0, 3.0, 1.0);
+
+pub fn getDefaultCameraPosition() zmath.F32x4 {
+    return DEFAULT_CAMERA_POSITION;
+}
+
 pub const Camera = struct {
     position: zmath.F32x4,
     front: zmath.F32x4,
@@ -22,7 +29,7 @@ pub const Camera = struct {
             .world_up = up,
             .yaw = yaw,
             .pitch = pitch,
-            .front = zmath.f32x4(0.0, -1.0, -1.0, 0.0),
+            .front = zmath.f32x4(0.0, 0.0, -1.0, 0.0),
             .movement_speed = 2.5,
             .mouse_sensitivity = 0.1,
             .zoom = 45.0,
@@ -38,7 +45,7 @@ pub const Camera = struct {
     }
 
     pub fn getProjectionMatrix(self: *const Camera, aspect_ratio: f32) zmath.Mat {
-        return zmath.perspectiveFovRh(math.degreesToRadians(self.zoom), aspect_ratio, 0.1, 100.0);
+        return zmath.perspectiveFovRh(math.degreesToRadians(self.zoom), aspect_ratio, 0.1, 1000.0);
     }
 
     pub fn processKeyboard(self: *Camera, direction: enum { Forward, Backward, Left, Right }, delta_time: f32) void {
@@ -53,15 +60,10 @@ pub const Camera = struct {
 
     pub fn processMouseMovement(self: *Camera, xoffset: f32, yoffset: f32, constrain_pitch: bool) void {
         self.yaw += xoffset * self.mouse_sensitivity;
-        self.pitch += yoffset * self.mouse_sensitivity;
+        self.pitch -= yoffset * self.mouse_sensitivity; // Invert y-axis
 
         if (constrain_pitch) {
-            if (self.pitch > 89.0) {
-                self.pitch = 89.0;
-            }
-            if (self.pitch < -89.0) {
-                self.pitch = -89.0;
-            }
+            self.pitch = std.math.clamp(self.pitch, -89.0, 89.0);
         }
 
         self.updateCameraVectors();
@@ -103,13 +105,19 @@ pub const Camera = struct {
         if (window.getKey(.d) == .press) {
             self.processKeyboard(.Right, delta_time);
         }
+        if (window.getKey(.r) == .press) {
+            // Reset camera position
+            self.position = getDefaultCameraPosition();
+            self.yaw = -90.0;
+            self.pitch = -20.0;
+        }
 
         // You can add vertical movement if desired
         if (window.getKey(.space) == .press) {
-            self.position -= self.up * zmath.f32x4s(velocity);
+            self.position += self.up * zmath.f32x4s(velocity);
         }
         if (window.getKey(.left_shift) == .press) {
-            self.position += self.up * zmath.f32x4s(velocity);
+            self.position -= self.up * zmath.f32x4s(velocity);
         }
 
         // The camera vectors (front, right, up) are already updated in processKeyboard,

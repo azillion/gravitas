@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const assets_dir = "assets/";
+const shaders_dir = "src/shaders/";
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -20,6 +21,14 @@ pub fn build(b: *std.Build) !void {
         .install_subdir = "bin/" ++ assets_dir,
     });
     exe.step.dependOn(&install_content_step.step);
+
+    // Add the shaders directory to the include path
+    const install_shaders_step = b.addInstallDirectory(.{
+        .source_dir = b.path(shaders_dir),
+        .install_dir = .{ .custom = "" },
+        .install_subdir = "bin/" ++ shaders_dir,
+    });
+    exe.step.dependOn(&install_shaders_step.step);
 
     @import("system_sdk").addLibraryPathsTo(exe);
     @import("zgpu").addLibraryPathsTo(exe);
