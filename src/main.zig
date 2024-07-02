@@ -37,18 +37,13 @@ const vertices = [_]Vertex{
 const indices = [_]u16{ 0, 1, 2, 0, 2, 3 };
 
 const VoxelUniform = struct {
+    view_matrix: [16]f32,
+    proj_matrix: [16]f32,
     camera_pos: [3]f32,
     _pad1: f32 = 0.0,
-    camera_front: [3]f32,
-    _pad2: f32 = 0.0,
-    camera_up: [3]f32,
-    _pad3: f32 = 0.0,
-    camera_right: [3]f32,
-    _pad4: f32 = 0.0,
     aspect_ratio: f32,
-    fov: f32,
     time: f32,
-    _pad5: f32 = 0.0,
+    _pad2: [2]f32 = .{0} ** 2,
 };
 
 fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
@@ -65,7 +60,11 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
     }, .{});
     errdefer gctx.destroy(allocator);
 
-    const cam = camera.Camera.init();
+    const cam = camera.Camera.init(zmath.f32x4(0.0, 2.0, 10.0, 1.0), // position
+        zmath.f32x4(0.0, 1.0, 0.0, 0.0), // up vector
+        -90.0, // yaw
+        -15.0 // pitch
+    );
 
     // const camera_buffer = gctx.createBuffer(.{
     //     .usage = .{ .copy_dst = true, .uniform = true },
@@ -127,13 +126,20 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         .{ .binding = 1, .buffer_handle = voxel_buffer, .offset = 0, .size = voxels.len * @sizeOf(Voxel) },
     });
 
+    const fb_size = window.getFramebufferSize();
+
     return State{
         .gctx = gctx,
         .pipeline = pipeline,
         .bind_group = bind_group,
         .voxel_uniform_buffer = voxel_uniform_buffer,
         .voxel_buffer = voxel_buffer,
+        .window_width = fb_size[0],
+        .window_height = fb_size[1],
         .camera = cam,
+        .last_x = @as(f32, @floatFromInt(window.getSize()[0])) / 2.0,
+        .last_y = @as(f32, @floatFromInt(window.getSize()[1])) / 2.0,
+        .first_mouse = true,
         .frame_times = std.ArrayList(f32).init(allocator),
         .last_frame_time = zglfw.getTime(),
     };
@@ -164,11 +170,16 @@ fn showDebugWindow(state: *State) void {
     const fps = 1.0 / avg_frame_time;
 
     zgui.setNextWindowPos(.{ .x = 10, .y = 10 });
-    zgui.setNextWindowSize(.{ .w = 300, .h = 150, .cond = .always });
+    zgui.setNextWindowSize(.{ .w = 500, .h = 200, .cond = .always });
 
     if (zgui.begin("Debug Info", .{ .flags = .{ .no_move = true, .no_resize = true } })) {
         zgui.text("Frame Time: {d:.3} ms", .{avg_frame_time * 1000});
         zgui.text("FPS: {d:.1}", .{fps});
+        zgui.text("Camera Position: {d:.3}, {d:.3}, {d:.3}", .{
+            state.camera.position[0],
+            state.camera.position[1],
+            state.camera.position[2],
+        });
     }
     defer zgui.end();
 }
@@ -215,29 +226,16 @@ fn update(state: *State) void {
 fn draw(state: *State) void {
     const gctx = state.gctx;
 
+    const aspect_ratio = @as(f32, @floatFromInt(state.window_width)) / @as(f32, @floatFromInt(state.window_height));
     const voxel_uniform = VoxelUniform{
+        .view_matrix = zmath.matToArr(state.camera.getViewMatrix()),
+        .proj_matrix = zmath.matToArr(state.camera.getProjectionMatrix(aspect_ratio)),
         .camera_pos = .{
             state.camera.position[0],
             state.camera.position[1],
             state.camera.position[2],
         },
-        .camera_front = .{
-            state.camera.front[0],
-            state.camera.front[1],
-            state.camera.front[2],
-        },
-        .camera_up = .{
-            state.camera.up[0],
-            state.camera.up[1],
-            state.camera.up[2],
-        },
-        .camera_right = .{
-            state.camera.right[0],
-            state.camera.right[1],
-            state.camera.right[2],
-        },
-        .aspect_ratio = @as(f32, @floatFromInt(gctx.swapchain_descriptor.width)) / @as(f32, @floatFromInt(gctx.swapchain_descriptor.height)),
-        .fov = std.math.tan(state.camera.fov * 0.5 * std.math.pi / 180.0),
+        .aspect_ratio = aspect_ratio,
         .time = @floatCast(zglfw.getTime()),
     };
     gctx.queue.writeBuffer(gctx.lookupResource(state.voxel_uniform_buffer).?, 0, VoxelUniform, &.{voxel_uniform});
@@ -281,33 +279,28 @@ fn draw(state: *State) void {
 
 fn mouseCallback(window: *zglfw.Window, xpos: f64, ypos: f64) callconv(.C) void {
     const state = window.getUserPointer(State) orelse return;
-    var cam = &state.camera;
+    const x: f32 = @floatCast(xpos);
+    const y: f32 = @floatCast(ypos);
 
-    const x = @as(f32, @floatCast(xpos));
-    const y = @as(f32, @floatCast(ypos));
-
-    if (cam.first_mouse) {
-        cam.last_x = x;
-        cam.last_y = y;
-        cam.first_mouse = false;
+    if (state.first_mouse) {
+        state.last_x = x;
+        state.last_y = y;
+        state.first_mouse = false;
     }
 
-    const xoffset = (x - cam.last_x) * cam.sensitivity;
-    const yoffset = (cam.last_y - y) * cam.sensitivity; // Reversed since y-coordinates range from bottom to top
-    cam.last_x = x;
-    cam.last_y = y;
+    const xoffset = x - state.last_x;
+    const yoffset = state.last_y - y; // Reversed since y-coordinates range from bottom to top
 
-    cam.yaw += xoffset;
-    cam.pitch += yoffset;
+    state.last_x = x;
+    state.last_y = y;
 
-    // Constrain the pitch
-    cam.pitch = std.math.clamp(cam.pitch, -89.0, 89.0);
+    state.camera.processMouseMovement(xoffset, yoffset, true);
+}
 
-    // Update front, right and up Vectors using the updated Euler angles
-    const front = zmath.normalize3(zmath.f32x4(@cos(math.degreesToRadians(cam.yaw)) * @cos(math.degreesToRadians(cam.pitch)), @sin(math.degreesToRadians(cam.pitch)), @sin(math.degreesToRadians(cam.yaw)) * @cos(math.degreesToRadians(cam.pitch)), 0.0));
-    cam.front = front;
-    cam.right = zmath.normalize3(zmath.cross3(front, zmath.f32x4(0.0, 1.0, 0.0, 0.0)));
-    cam.up = zmath.normalize3(zmath.cross3(cam.right, front));
+fn frameBufferResizeCallback(window: *zglfw.Window, width: i32, height: i32) callconv(.C) void {
+    const state = window.getUserPointer(State) orelse return;
+    state.window_width = @intCast(width);
+    state.window_height = @intCast(height);
 }
 
 pub fn main() !void {
@@ -358,7 +351,8 @@ pub fn main() !void {
 
     window.setUserPointer(&state);
     // _ = window.setCursorPosCallback(mouseCallback);
-    window.setInputMode(.cursor, .disabled);
+    _ = window.setFramebufferSizeCallback(frameBufferResizeCallback);
+    // window.setInputMode(.cursor, .disabled);
 
     var last_time: f64 = zglfw.getTime();
 
@@ -368,8 +362,9 @@ pub fn main() !void {
         last_time = current_time;
 
         zglfw.pollEvents();
-        update(&state);
         state.camera.update(window, delta_time);
+        update(&state);
+
         draw(&state);
     }
 }

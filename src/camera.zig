@@ -1,6 +1,7 @@
 const std = @import("std");
 const zglfw = @import("zglfw");
 const zmath = @import("zmath");
+const math = @import("std").math;
 const State = @import("state.zig").State;
 
 pub const Camera = struct {
@@ -8,74 +9,110 @@ pub const Camera = struct {
     front: zmath.F32x4,
     up: zmath.F32x4,
     right: zmath.F32x4,
+    world_up: zmath.F32x4,
     yaw: f32,
     pitch: f32,
-    fov: f32,
-    last_x: f32,
-    last_y: f32,
-    sensitivity: f32,
-    first_mouse: bool,
+    movement_speed: f32,
+    mouse_sensitivity: f32,
+    zoom: f32,
 
-    pub fn init() Camera {
-        return .{
-            .position = zmath.f32x4(16.0, 25.0, 48.0, 1.0), // Updated position
-            .front = zmath.normalize3(zmath.f32x4(0.0, -0.5, -1.0, 0.0)), // Looking slightly downward
-            .up = zmath.f32x4(0.0, 1.0, 0.0, 0.0),
-            .right = zmath.normalize3(zmath.cross3(zmath.f32x4(0.0, -0.5, -1.0, 0.0), zmath.f32x4(0.0, 1.0, 0.0, 0.0))),
-            .yaw = -90.0, // Updated yaw
-            .pitch = -15.0, // Updated pitch
-            .fov = 0.25,
-            .last_x = 0,
-            .last_y = 0,
-            .sensitivity = 0.1,
-            .first_mouse = true,
+    pub fn init(position: zmath.F32x4, up: zmath.F32x4, yaw: f32, pitch: f32) Camera {
+        var camera = Camera{
+            .position = position,
+            .world_up = up,
+            .yaw = yaw,
+            .pitch = pitch,
+            .front = zmath.f32x4(0.0, -1.0, -1.0, 0.0),
+            .movement_speed = 2.5,
+            .mouse_sensitivity = 0.1,
+            .zoom = 45.0,
+            .up = undefined,
+            .right = undefined,
         };
+        camera.updateCameraVectors();
+        return camera;
+    }
+
+    pub fn getViewMatrix(self: *const Camera) zmath.Mat {
+        return zmath.lookAtRh(self.position, self.position + self.front, self.up);
+    }
+
+    pub fn getProjectionMatrix(self: *const Camera, aspect_ratio: f32) zmath.Mat {
+        return zmath.perspectiveFovRh(math.degreesToRadians(self.zoom), aspect_ratio, 0.1, 100.0);
+    }
+
+    pub fn processKeyboard(self: *Camera, direction: enum { Forward, Backward, Left, Right }, delta_time: f32) void {
+        const velocity = self.movement_speed * delta_time;
+        switch (direction) {
+            .Forward => self.position += self.front * zmath.f32x4s(velocity),
+            .Backward => self.position -= self.front * zmath.f32x4s(velocity),
+            .Left => self.position -= self.right * zmath.f32x4s(velocity),
+            .Right => self.position += self.right * zmath.f32x4s(velocity),
+        }
+    }
+
+    pub fn processMouseMovement(self: *Camera, xoffset: f32, yoffset: f32, constrain_pitch: bool) void {
+        self.yaw += xoffset * self.mouse_sensitivity;
+        self.pitch += yoffset * self.mouse_sensitivity;
+
+        if (constrain_pitch) {
+            if (self.pitch > 89.0) {
+                self.pitch = 89.0;
+            }
+            if (self.pitch < -89.0) {
+                self.pitch = -89.0;
+            }
+        }
+
+        self.updateCameraVectors();
+    }
+
+    pub fn processMouseScroll(self: *Camera, yoffset: f32) void {
+        self.zoom -= yoffset;
+        if (self.zoom < 1.0) {
+            self.zoom = 1.0;
+        }
+        if (self.zoom > 45.0) {
+            self.zoom = 45.0;
+        }
+    }
+
+    fn updateCameraVectors(self: *Camera) void {
+        // Calculate the new Front vector
+        const x = math.cos(math.degreesToRadians(self.yaw)) * math.cos(math.degreesToRadians(self.pitch));
+        const y = math.sin(math.degreesToRadians(self.pitch));
+        const z = math.sin(math.degreesToRadians(self.yaw)) * math.cos(math.degreesToRadians(self.pitch));
+        self.front = zmath.normalize3(zmath.f32x4(x, y, z, 0.0));
+        // Re-calculate the Right and Up vector
+        self.right = zmath.normalize3(zmath.cross3(self.front, self.world_up));
+        self.up = zmath.normalize3(zmath.cross3(self.right, self.front));
     }
 
     pub fn update(self: *Camera, window: *zglfw.Window, delta_time: f32) void {
-        const speed = zmath.f32x4s(10.0);
-        const delta_time_vec = zmath.f32x4s(delta_time);
-        const transform = zmath.mul(zmath.rotationX(self.pitch), zmath.rotationY(self.yaw));
-
-        // Forward vector (for W/S movement)
-        const forward = zmath.normalize3(zmath.mul(zmath.f32x4(0.0, 0.0, -1.0, 0.0), transform));
-
-        // Right vector (for A/D movement)
-        const right = zmath.normalize3(zmath.cross3(forward, zmath.f32x4(0.0, 1.0, 0.0, 0.0)));
-
-        // Up vector (for Space/Left Shift movement)
-        const up = zmath.f32x4(0.0, 1.0, 0.0, 0.0);
-
-        // Scale movement vectors
-        const scaled_forward = forward * speed * delta_time_vec;
-        const scaled_right = right * speed * delta_time_vec;
-        const scaled_up = up * speed * delta_time_vec;
-
-        var cam_pos = zmath.loadArr4(self.position);
+        const velocity = self.movement_speed * delta_time;
 
         if (window.getKey(.w) == .press) {
-            cam_pos += scaled_forward;
-        } else if (window.getKey(.s) == .press) {
-            cam_pos -= scaled_forward;
+            self.processKeyboard(.Forward, delta_time);
         }
-
+        if (window.getKey(.s) == .press) {
+            self.processKeyboard(.Backward, delta_time);
+        }
+        if (window.getKey(.a) == .press) {
+            self.processKeyboard(.Left, delta_time);
+        }
         if (window.getKey(.d) == .press) {
-            cam_pos += scaled_right;
-        } else if (window.getKey(.a) == .press) {
-            cam_pos -= scaled_right;
+            self.processKeyboard(.Right, delta_time);
         }
 
+        // You can add vertical movement if desired
         if (window.getKey(.space) == .press) {
-            cam_pos += scaled_up;
-        } else if (window.getKey(.left_shift) == .press) {
-            cam_pos -= scaled_up;
+            self.position -= self.up * zmath.f32x4s(velocity);
+        }
+        if (window.getKey(.left_shift) == .press) {
+            self.position += self.up * zmath.f32x4s(velocity);
         }
 
-        zmath.storeArr4(&self.position, cam_pos);
-
-        // Update front vector
-        self.front = zmath.normalize3(forward);
-        // Update right vector
-        self.right = zmath.normalize3(right);
+        // The camera vectors (front, right, up) are already updated in processKeyboard,
+        // so we don't need to update them here again.
     }
 };
