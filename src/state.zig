@@ -18,4 +18,5 @@ pub const State = struct {
     first_mouse: bool,
     frame_times: std.ArrayList(f32),
     last_frame_time: f64,
+    shader_last_modified: i128,
 };

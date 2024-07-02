@@ -18,8 +18,8 @@ const shaders_dir = "src/shaders/";
 const window_title = "Gravitas Engine";
 const default_window_width = 1600;
 const default_window_height = 1000;
-
-const wgsl_vs = @embedFile("shaders/basic_raymarcher.vs.wgsl");
+const shader_hot_reload_interval = 1.0;
+const shader_path = shaders_dir ++ "basic_pathtrace.wgsl";
 
 const Vertex = struct {
     position: [3]f32,
@@ -63,7 +63,7 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
     const cam = camera.Camera.init(camera.getDefaultCameraPosition(), // position
         zmath.f32x4(0.0, 1.0, 0.0, 0.0), // up vector
         -90.0, // yaw
-        -20.0 // pitch
+        30.0 // pitch
     );
 
     const voxels = try createVoxelGrid(allocator);
@@ -87,17 +87,17 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
     const pipeline_layout = gctx.createPipelineLayout(&.{bind_group_layout});
     defer gctx.releaseResource(pipeline_layout);
 
-    const wgsl_fs = utils.readWgslWithIncludes(allocator, shaders_dir ++ "basic_pathtrace.fs.wgsl") catch |err| {
+    const wgsl_file = utils.readWgslWithIncludes(allocator, shader_path) catch |err| {
         std.debug.print("Error reading shader: {any}", .{err});
         return err;
     };
-    defer allocator.free(wgsl_fs.ptr[0 .. std.mem.len(wgsl_fs.ptr) + 1]); // free the whole buffer + null terminator
+    defer allocator.free(wgsl_file.ptr[0 .. std.mem.len(wgsl_file.ptr) + 1]); // free the whole buffer + null terminator
 
     const pipeline = pipelines: {
-        const vs_module = zgpu.createWgslShaderModule(gctx.device, wgsl_vs, "vs");
+        const vs_module = zgpu.createWgslShaderModule(gctx.device, wgsl_file.ptr, "vs");
         defer vs_module.release();
 
-        const fs_module = zgpu.createWgslShaderModule(gctx.device, wgsl_fs.ptr, "fs");
+        const fs_module = zgpu.createWgslShaderModule(gctx.device, wgsl_file.ptr, "fs");
         defer fs_module.release();
 
         const color_targets = [_]wgpu.ColorTargetState{.{
@@ -128,6 +128,10 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
 
     const fb_size = window.getFramebufferSize();
 
+    const shader_file = try std.fs.cwd().openFile(shader_path, .{});
+    defer shader_file.close();
+    const shader_stat = try shader_file.stat();
+
     return State{
         .gctx = gctx,
         .pipeline = pipeline,
@@ -143,6 +147,7 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         .first_mouse = true,
         .frame_times = std.ArrayList(f32).init(allocator),
         .last_frame_time = zglfw.getTime(),
+        .shader_last_modified = shader_stat.mtime,
     };
 }
 
@@ -151,6 +156,65 @@ fn deinit(allocator: std.mem.Allocator, state: *State) void {
     state.gctx.destroy(allocator);
     allocator.free(state.voxels);
     state.* = undefined;
+}
+
+fn reloadShaderAndPipeline(state: *State, allocator: std.mem.Allocator) !void {
+    const wgsl_file = try utils.readWgslWithIncludes(allocator, shader_path);
+    defer allocator.free(wgsl_file.ptr[0 .. std.mem.len(wgsl_file.ptr) + 1]);
+
+    const gctx = state.gctx;
+    const vs_module = zgpu.createWgslShaderModule(gctx.device, wgsl_file.ptr, "vs");
+    defer vs_module.release();
+
+    const fs_module = zgpu.createWgslShaderModule(gctx.device, wgsl_file.ptr, "fs");
+    defer fs_module.release();
+
+    const color_targets = [_]wgpu.ColorTargetState{.{
+        .format = zgpu.GraphicsContext.swapchain_format,
+    }};
+
+    const bind_group_layout = gctx.createBindGroupLayout(&.{
+        zgpu.bufferEntry(0, .{ .vertex = true, .fragment = true }, .uniform, false, 0),
+        zgpu.bufferEntry(1, .{ .fragment = true }, .read_only_storage, false, 0),
+    });
+    defer gctx.releaseResource(bind_group_layout);
+
+    const pipeline_layout = gctx.createPipelineLayout(&.{bind_group_layout});
+    defer gctx.releaseResource(pipeline_layout);
+
+    const pipeline_descriptor = wgpu.RenderPipelineDescriptor{
+        .vertex = wgpu.VertexState{
+            .module = vs_module,
+            .entry_point = "vs_main",
+            .buffer_count = 0,
+            .buffers = null,
+        },
+        .fragment = &wgpu.FragmentState{
+            .module = fs_module,
+            .entry_point = "fs_main",
+            .target_count = color_targets.len,
+            .targets = &color_targets,
+        },
+    };
+
+    gctx.releaseResource(state.pipeline);
+
+    state.pipeline = gctx.createRenderPipeline(pipeline_layout, pipeline_descriptor);
+    std.debug.print("Shader reloaded and pipeline recreated.\n", .{});
+}
+
+fn hasFileChanged(filepath: []const u8, last_modified: *i128) !bool {
+    const file = try std.fs.cwd().openFile(filepath, .{});
+    defer file.close();
+
+    const stat = try file.stat();
+    const current_modified = stat.mtime;
+
+    if (current_modified > last_modified.*) {
+        last_modified.* = current_modified;
+        return true;
+    }
+    return false;
 }
 
 fn showDebugWindow(state: *State) void {
@@ -312,11 +376,14 @@ pub fn main() !void {
     try zglfw.init();
     defer zglfw.terminate();
 
-    // Change current working directory to where the executable is located.
+    var current_dir: []u8 = undefined;
+    var executable_path: []const u8 = undefined;
+
+    // get the current working directory and executable path
     {
         var buffer: [1024]u8 = undefined;
-        const path = std.fs.selfExeDirPath(buffer[0..]) catch ".";
-        try std.posix.chdir(path);
+        current_dir = try std.fs.cwd().realpath(".", buffer[0..]);
+        executable_path = try std.fs.selfExeDirPath(buffer[0..]);
     }
 
     zglfw.windowHintTyped(.client_api, .no_api);
@@ -342,7 +409,11 @@ pub fn main() !void {
     zgui.init(allocator);
     defer zgui.deinit();
 
+    try std.posix.chdir(executable_path);
     _ = zgui.io.addFontFromFile(content_dir ++ "Roboto-Medium.ttf", math.floor(16.0 * scale_factor));
+
+    // Change current working directory back to the project root.
+    try std.posix.chdir(current_dir);
 
     zgui.backend.init(
         window,
@@ -360,11 +431,24 @@ pub fn main() !void {
     window.setInputMode(.cursor, .disabled);
 
     var last_time: f64 = zglfw.getTime();
+    var last_hot_reload_time: f64 = zglfw.getTime();
+    const hot_reload_interval: f64 = 1.0;
 
     while (!window.shouldClose() and window.getKey(.escape) != .press) {
         const current_time = zglfw.getTime();
         const delta_time: f32 = @floatCast(current_time - last_time);
         last_time = current_time;
+
+        // Hot reload the shader every second
+        // This is useful for development, but should be removed in a production build
+        // as it can be a performance hit.
+        if (current_time - last_hot_reload_time > hot_reload_interval) {
+            last_hot_reload_time = current_time;
+            if (try hasFileChanged(shader_path, &state.shader_last_modified)) {
+                std.debug.print("Shader file changed, reloading.\n", .{});
+                try reloadShaderAndPipeline(&state, allocator);
+            }
+        }
 
         zglfw.pollEvents();
         state.camera.update(window, delta_time);
