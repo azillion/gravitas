@@ -5,7 +5,7 @@ const math = @import("std").math;
 const State = @import("state.zig").State;
 
 //const DEFAULT_CAMERA_POSITION = zmath.f32x4(16.0, 20.0, 48.0, 1.0);
-const DEFAULT_CAMERA_POSITION = zmath.f32x4(0.0, -5.0, 32.0, 1.0);
+const DEFAULT_CAMERA_POSITION = zmath.f32x4(0.0, 5.0, 0.0, 1.0);
 
 pub fn getDefaultCameraPosition() zmath.F32x4 {
     return DEFAULT_CAMERA_POSITION;
@@ -108,8 +108,8 @@ pub const Camera = struct {
         if (window.getKey(.r) == .press) {
             // Reset camera position
             self.position = getDefaultCameraPosition();
-            self.yaw = -90.0;
-            self.pitch = -20.0;
+            self.yaw = 0.0;
+            self.pitch = 0.0;
         }
 
         // You can add vertical movement if desired

@@ -62,20 +62,20 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
 
     const cam = camera.Camera.init(camera.getDefaultCameraPosition(), // position
         zmath.f32x4(0.0, 1.0, 0.0, 0.0), // up vector
-        -90.0, // yaw
-        30.0 // pitch
+        0.0, // yaw
+        0.0 // pitch
     );
 
     const voxels = try createVoxelGrid(allocator);
 
-    const voxel_buffer = gctx.createBuffer(.{
-        .usage = .{ .storage = true, .copy_dst = true },
-        .size = voxels.len * @sizeOf(Voxel),
-    });
-
     const voxel_uniform_buffer = gctx.createBuffer(.{
         .usage = .{ .uniform = true, .copy_dst = true },
         .size = @sizeOf(VoxelUniform),
+    });
+
+    const voxel_buffer = gctx.createBuffer(.{
+        .usage = .{ .storage = true, .copy_dst = true },
+        .size = voxels.len * @sizeOf(Voxel),
     });
 
     const bind_group_layout = gctx.createBindGroupLayout(&.{
@@ -159,7 +159,10 @@ fn deinit(allocator: std.mem.Allocator, state: *State) void {
 }
 
 fn reloadShaderAndPipeline(state: *State, allocator: std.mem.Allocator) !void {
-    const wgsl_file = try utils.readWgslWithIncludes(allocator, shader_path);
+    const wgsl_file = utils.readWgslWithIncludes(allocator, shader_path) catch |err| {
+        std.debug.print("Error reading shader: {any}", .{err});
+        return err;
+    };
     defer allocator.free(wgsl_file.ptr[0 .. std.mem.len(wgsl_file.ptr) + 1]);
 
     const gctx = state.gctx;
