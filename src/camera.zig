@@ -5,7 +5,7 @@ const math = @import("std").math;
 const State = @import("state.zig").State;
 
 //const DEFAULT_CAMERA_POSITION = zmath.f32x4(16.0, 20.0, 48.0, 1.0);
-const DEFAULT_CAMERA_POSITION = zmath.f32x4(0.0, 5.0, 0.0, 1.0);
+const DEFAULT_CAMERA_POSITION = zmath.f32x4(0.0, 0.0, 0.0, 1.0);
 
 pub fn getDefaultCameraPosition() zmath.F32x4 {
     return DEFAULT_CAMERA_POSITION;

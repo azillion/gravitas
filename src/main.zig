@@ -19,7 +19,7 @@ const window_title = "Gravitas Engine";
 const default_window_width = 1600;
 const default_window_height = 1000;
 const shader_hot_reload_interval = 1.0;
-const shader_path = shaders_dir ++ "basic_pathtrace.wgsl";
+const shader_path = shaders_dir ++ "ray_tracing1.wgsl";
 
 const Vertex = struct {
     position: [3]f32,
@@ -62,7 +62,7 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
 
     const cam = camera.Camera.init(camera.getDefaultCameraPosition(), // position
         zmath.f32x4(0.0, 1.0, 0.0, 0.0), // up vector
-        0.0, // yaw
+        90.0, // yaw
         0.0 // pitch
     );
 
@@ -391,7 +391,10 @@ pub fn main() !void {
 
     zglfw.windowHintTyped(.client_api, .no_api);
 
-    const window = try zglfw.Window.create(default_window_width, default_window_height, window_title, null);
+    const aspect_ratio = 16.0 / 9.0;
+    const height = @as(i32, @intFromFloat(@divFloor(default_window_width, aspect_ratio)));
+
+    const window = try zglfw.Window.create(default_window_width, height, window_title, null);
     defer window.destroy();
     window.setSizeLimits(400, 400, -1, -1);
 
