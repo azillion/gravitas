@@ -62,17 +62,29 @@ fn ray_color(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> vec4<f32> {
 
 @fragment
 fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
-    let view_proj = uniforms.proj_matrix * uniforms.view_matrix;
-    let inv_view_proj = inverse_mat4(view_proj);
+    // Define camera parameters
+    let aspect_ratio = uniforms.aspect_ratio;
+    let viewport_height = 2.0;
+    let viewport_width = aspect_ratio * viewport_height;
+    let focal_length = 1.0;
 
-    let near_point = inv_view_proj * vec4<f32>(uv * 2.0 - 1.0, -1.0, 1.0);
-    let far_point = inv_view_proj * vec4<f32>(uv * 2.0 - 1.0, 1.0, 1.0);
-    
-    let near_point_3d = near_point.xyz / near_point.w;
-    let far_point_3d = far_point.xyz / far_point.w;
-    let ray_dir = normalize(far_point_3d - near_point_3d);
-    let ray_origin = uniforms.camera_pos;
+    // Calculate viewport vectors
+    let viewport_u = vec3<f32>(viewport_width, 0.0, 0.0);
+    let viewport_v = vec3<f32>(0.0, -viewport_height, 0.0);
 
-    return ray_color(ray_origin, ray_dir);
+    // Calculate upper left pixel location
+    let viewport_upper_left = uniforms.camera_pos 
+                            - vec3<f32>(0.0, 0.0, focal_length) 
+                            - viewport_u * 0.5 
+                            - viewport_v * 0.5;
+
+    // Calculate pixel center
+    let pixel_center = viewport_upper_left 
+                     + uv.x * viewport_u
+                     + (1.0 - uv.y) * viewport_v;
+
+    // Calculate ray direction
+    let ray_dir = normalize(pixel_center - uniforms.camera_pos);
+
+    return ray_color(uniforms.camera_pos, ray_dir);
 }
-
