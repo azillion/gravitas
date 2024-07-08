@@ -432,7 +432,7 @@ pub fn main() !void {
     //////////////////////////
 
     window.setUserPointer(&state);
-    _ = window.setCursorPosCallback(mouseCallback);
+    // _ = window.setCursorPosCallback(mouseCallback);
     _ = window.setFramebufferSizeCallback(frameBufferResizeCallback);
     window.setInputMode(.cursor, .disabled);
 
