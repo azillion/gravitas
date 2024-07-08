@@ -5,6 +5,7 @@ const math = @import("std").math;
 const State = @import("state.zig").State;
 
 // TODO: rework this entirely
+// We just need a simple camera for now, we can add controls later
 
 const DEFAULT_CAMERA_POSITION = zmath.f32x4(0.0, 0.0, 0.0, 1.0);
 
