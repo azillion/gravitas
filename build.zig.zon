@@ -5,6 +5,7 @@
         .zgpu = .{ .path = "libs/zgpu" },
         .zpool = .{ .path = "libs/zpool" },
         .zjobs = .{ .path = "libs/zjobs" },
+        .zflecs = .{ .path = "libs/zflecs" },
         .zglfw = .{ .path = "libs/zglfw" },
         .zgui = .{ .path = "libs/zgui" },
         .zmath = .{ .path = "libs/zmath" },

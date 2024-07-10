@@ -45,6 +45,10 @@ pub fn build(b: *std.Build) !void {
     const zjobs = b.dependency("zjobs", .{});
     exe.root_module.addImport("zjobs", zjobs.module("root"));
 
+    const zflecs = b.dependency("zflecs", .{});
+    exe.root_module.addImport("zflecs", zflecs.module("root"));
+    exe.linkLibrary(zflecs.artifact("flecs"));
+
     const run_cmd = b.addRunArtifact(exe);
     const run_step = b.step("run", "Run gravitas");
     run_step.dependOn(&run_cmd.step);
