@@ -42,6 +42,9 @@ pub fn build(b: *std.Build) !void {
     const zmath = b.dependency("zmath", .{});
     exe.root_module.addImport("zmath", zmath.module("root"));
 
+    const zjobs = b.dependency("zjobs", .{});
+    exe.root_module.addImport("zjobs", zjobs.module("root"));
+
     const run_cmd = b.addRunArtifact(exe);
     const run_step = b.step("run", "Run gravitas");
     run_step.dependOn(&run_cmd.step);

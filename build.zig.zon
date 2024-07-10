@@ -4,6 +4,7 @@
     .dependencies = .{
         .zgpu = .{ .path = "libs/zgpu" },
         .zpool = .{ .path = "libs/zpool" },
+        .zjobs = .{ .path = "libs/zjobs" },
         .zglfw = .{ .path = "libs/zglfw" },
         .zgui = .{ .path = "libs/zgui" },
         .zmath = .{ .path = "libs/zmath" },

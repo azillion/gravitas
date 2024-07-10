@@ -34,7 +34,7 @@ pub const Camera = struct {
             .front = zmath.f32x4(0.0, 0.0, -1.0, 0.0),
             .movement_speed = 2.5,
             .mouse_sensitivity = 0.1,
-            .zoom = 45.0,
+            .zoom = 100.0,
             .up = undefined,
             .right = undefined,
         };
