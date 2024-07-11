@@ -310,6 +310,7 @@ fn draw(state: *State) void {
     };
     gctx.queue.writeBuffer(gctx.lookupResource(state.voxel_uniform_buffer).?, 0, VoxelUniform, &.{voxel_uniform});
 
+    // TODO: remove this from the draw loop, it should be done once at the start
     gctx.queue.writeBuffer(gctx.lookupResource(state.voxel_buffer).?, 0, Voxel, state.voxels);
 
     const back_buffer_view = gctx.swapchain.getCurrentTextureView();
