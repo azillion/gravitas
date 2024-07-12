@@ -22,11 +22,10 @@ pub fn build(b: *std.Build) !void {
     exe.step.dependOn(&install_content_step.step);
 
     @import("system_sdk").addLibraryPathsTo(exe);
-    @import("zgpu").addLibraryPathsTo(exe);
 
-    const zgpu = b.dependency("zgpu", .{});
-    exe.root_module.addImport("zgpu", zgpu.module("root"));
-    exe.linkLibrary(zgpu.artifact("zdawn"));
+    // add vulkan dependency
+    //
+    ///////////////////////////////////////////////
 
     const zglfw = b.dependency("zglfw", .{});
     exe.root_module.addImport("zglfw", zglfw.module("root"));
