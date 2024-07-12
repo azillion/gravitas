@@ -21,6 +21,8 @@ const default_window_height = 1000;
 const shader_hot_reload_interval = 1.0;
 const shader_path = shaders_dir ++ "ray_tracing1.wgsl";
 
+// TODO: okay we're ripping out wgpu and switching to vulkan
+
 const Vertex = struct {
     position: [3]f32,
     uv: [2]f32,
