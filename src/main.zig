@@ -16,6 +16,12 @@ pub fn main() !void {
     try zglfw.init();
     defer zglfw.terminate();
 
+    if (zglfw.isVulkanSupported()) {
+        std.debug.print("Vulkan is supported\n", .{});
+    } else {
+        std.debug.print("Vulkan is not supported\n", .{});
+    }
+
     var current_dir: []u8 = undefined;
     var executable_path: []const u8 = undefined;
 
@@ -31,7 +37,9 @@ pub fn main() !void {
     const aspect_ratio = 16.0 / 9.0;
     const height = @as(i32, @intFromFloat(@divFloor(default_window_width, aspect_ratio)));
 
-    const window = try zglfw.Window.create(default_window_width, height, window_title, null);
+    const extent: zvk.Extent2D = .{ .width = default_window_width, .height = height };
+
+    const window = try zglfw.Window.create(@intCast(extent.width), @intCast(extent.height), window_title, null);
     defer window.destroy();
     window.setSizeLimits(400, 400, -1, -1);
 
