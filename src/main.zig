@@ -3,12 +3,13 @@ const math = std.math;
 const zglfw = @import("zglfw");
 const zgui = @import("zgui");
 const zmath = @import("zmath");
+const zvk = @import("vulkan");
 
 const content_dir = "assets/";
 const shaders_dir = "src/shaders/";
 const window_title = "Gravitas Engine";
-const default_window_width = 1600;
-const default_window_height = 1000;
+const default_window_width = 800;
+const default_window_height = 600;
 const shader_hot_reload_interval = 1.0;
 
 pub fn main() !void {
@@ -36,6 +37,11 @@ pub fn main() !void {
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
+
+    // var extensionCount: u32 = 0;
+    // var extensions: []const u8 = null;
+    // try zglfw.getRequiredInstanceExtensions(&extensionCount, &extensions);
+    // std.debug.print("Extension count: {}\n", extensionCount);
 
     // const allocator = gpa.allocator();
     //
