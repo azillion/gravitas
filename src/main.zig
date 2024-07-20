@@ -12,15 +12,11 @@ const default_window_width = 800;
 const default_window_height = 600;
 const shader_hot_reload_interval = 1.0;
 
+// need to switch to c glfw, not the zig bindings
+
 pub fn main() !void {
     try zglfw.init();
     defer zglfw.terminate();
-
-    if (zglfw.isVulkanSupported()) {
-        std.debug.print("Vulkan is supported\n", .{});
-    } else {
-        std.debug.print("Vulkan is not supported\n", .{});
-    }
 
     var current_dir: []u8 = undefined;
     var executable_path: []const u8 = undefined;
