@@ -1,4 +1,4 @@
-//!include src/shaders/inverse.wgsl
+//!include src/shaders/math.wgsl
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,

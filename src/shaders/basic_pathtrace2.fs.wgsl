@@ -118,7 +118,7 @@ fn trace_path(ray_origin: vec3<f32>, ray_dir: vec3<f32>, seed: ptr<function, u32
     return result;
 }
 
-//!include src/shaders/inverse.wgsl
+//!include src/shaders/math.wgsl
 
 @fragment
 fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
