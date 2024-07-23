@@ -1,23 +1,15 @@
 const std = @import("std");
 const math = std.math;
 const zglfw = @import("zglfw");
-const zgpu = @import("zgpu");
-const wgpu = zgpu.wgpu;
 const zgui = @import("zgui");
 const zmath = @import("zmath");
-
-const svo = @import("voxels/octree.zig");
-const Voxel = @import("voxels/voxel.zig").Voxel;
-const camera = @import("camera.zig");
-const CameraUniform = camera.CameraUniform;
-const State = @import("state.zig").State;
-const utils = @import("utils.zig");
+const zvk = @import("vulkan");
 
 const content_dir = "assets/";
 const shaders_dir = "src/shaders/";
 const window_title = "Gravitas Engine";
-const default_window_width = 1600;
-const default_window_height = 1000;
+const default_window_width = 800;
+const default_window_height = 600;
 const shader_hot_reload_interval = 1.0;
 const shader_path = shaders_dir ++ "ray_tracing1.wgsl";
 
@@ -380,6 +372,12 @@ pub fn main() !void {
     try zglfw.init();
     defer zglfw.terminate();
 
+    if (zglfw.isVulkanSupported()) {
+        std.debug.print("Vulkan is supported\n", .{});
+    } else {
+        std.debug.print("Vulkan is not supported\n", .{});
+    }
+
     var current_dir: []u8 = undefined;
     var executable_path: []const u8 = undefined;
 
@@ -395,72 +393,60 @@ pub fn main() !void {
     const aspect_ratio = 16.0 / 9.0;
     const height = @as(i32, @intFromFloat(@divFloor(default_window_width, aspect_ratio)));
 
-    const window = try zglfw.Window.create(default_window_width, height, window_title, null);
+    const extent: zvk.Extent2D = .{ .width = default_window_width, .height = height };
+
+    const window = try zglfw.Window.create(@intCast(extent.width), @intCast(extent.height), window_title, null);
     defer window.destroy();
     window.setSizeLimits(400, 400, -1, -1);
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    const allocator = gpa.allocator();
+    // var extensionCount: u32 = 0;
+    // var extensions: []const u8 = null;
+    // try zglfw.getRequiredInstanceExtensions(&extensionCount, &extensions);
+    // std.debug.print("Extension count: {}\n", extensionCount);
 
-    var state = try init(allocator, window);
-    defer deinit(allocator, &state);
-
-    const scale_factor = scale_factor: {
-        const scale = window.getContentScale();
-        break :scale_factor @max(scale[0], scale[1]);
-    };
+    // const allocator = gpa.allocator();
+    //
+    // const scale_factor = scale_factor: {
+    //     const scale = window.getContentScale();
+    //     break :scale_factor @max(scale[0], scale[1]);
+    // };
 
     ////////////// gui initialization
-    zgui.init(allocator);
-    defer zgui.deinit();
-
-    try std.posix.chdir(executable_path);
-    _ = zgui.io.addFontFromFile(content_dir ++ "Roboto-Medium.ttf", math.floor(16.0 * scale_factor));
-
-    // Change current working directory back to the project root.
-    try std.posix.chdir(current_dir);
-
-    zgui.backend.init(
-        window,
-        state.gctx.device,
-        @intFromEnum(zgpu.GraphicsContext.swapchain_format),
-        @intFromEnum(wgpu.TextureFormat.undef),
-    );
-    defer zgui.backend.deinit();
-    zgui.getStyle().scaleAllSizes(scale_factor);
+    // zgui.init(allocator);
+    // defer zgui.deinit();
+    //
+    // try std.posix.chdir(executable_path);
+    // _ = zgui.io.addFontFromFile(content_dir ++ "Roboto-Medium.ttf", math.floor(16.0 * scale_factor));
+    //
+    // // Change current working directory back to the project root.
+    // try std.posix.chdir(current_dir);
+    //
+    // zgui.backend.init(
+    //     window,
+    //     state.gctx.device,
+    //     @intFromEnum(zgpu.GraphicsContext.swapchain_format),
+    //     @intFromEnum(wgpu.TextureFormat.undef),
+    // );
+    // defer zgui.backend.deinit();
+    // zgui.getStyle().scaleAllSizes(scale_factor);
     //////////////////////////
 
-    window.setUserPointer(&state);
+    // window.setUserPointer(&state);
     // _ = window.setCursorPosCallback(mouseCallback);
-    _ = window.setFramebufferSizeCallback(frameBufferResizeCallback);
+    // _ = window.setFramebufferSizeCallback(frameBufferResizeCallback);
     window.setInputMode(.cursor, .disabled);
 
     var last_time: f64 = zglfw.getTime();
-    var last_hot_reload_time: f64 = zglfw.getTime();
-    const hot_reload_interval: f64 = 1.0;
 
     while (!window.shouldClose() and window.getKey(.escape) != .press) {
         const current_time = zglfw.getTime();
         const delta_time: f32 = @floatCast(current_time - last_time);
+        _ = delta_time;
         last_time = current_time;
 
-        // Hot reload the shader every second
-        // This is useful for development, but should be removed in a production build
-        // as it can be a performance hit.
-        if (current_time - last_hot_reload_time > hot_reload_interval) {
-            last_hot_reload_time = current_time;
-            if (try hasFileChanged(shader_path, &state.shader_last_modified)) {
-                std.debug.print("Shader file changed, reloading.\n", .{});
-                try reloadShaderAndPipeline(&state, allocator);
-            }
-        }
-
         zglfw.pollEvents();
-        state.camera.update(window, delta_time);
-        update(&state);
-
-        draw(&state);
     }
 }
