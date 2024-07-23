@@ -1,4 +1,4 @@
-//!include src/shaders/inverse.wgsl
+//!include src/shaders/math.wgsl
 
 struct Uniforms {
     view_matrix: mat4x4<f32>,
