@@ -7,7 +7,6 @@ const zgui = @import("zgui");
 const zmath = @import("zmath");
 
 const svo = @import("voxels/octree.zig");
-const Voxel = @import("voxels/voxel.zig").Voxel;
 const camera = @import("camera.zig");
 const CameraUniform = camera.CameraUniform;
 const State = @import("state.zig").State;
@@ -19,7 +18,7 @@ const window_title = "Gravitas Engine";
 const default_window_width = 1600;
 const default_window_height = 1000;
 const shader_hot_reload_interval = 1.0;
-const shader_path = shaders_dir ++ "ray_tracing1.wgsl";
+const shader_path = shaders_dir ++ "basic_pathtrace.wgsl";
 
 const Vertex = struct {
     position: [3]f32,
@@ -66,21 +65,13 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         0.0 // pitch
     );
 
-    const voxels = try createVoxelGrid(allocator);
-
     const voxel_uniform_buffer = gctx.createBuffer(.{
         .usage = .{ .uniform = true, .copy_dst = true },
         .size = @sizeOf(VoxelUniform),
     });
 
-    const voxel_buffer = gctx.createBuffer(.{
-        .usage = .{ .storage = true, .copy_dst = true },
-        .size = voxels.len * @sizeOf(Voxel),
-    });
-
     const bind_group_layout = gctx.createBindGroupLayout(&.{
         zgpu.bufferEntry(0, .{ .vertex = true, .fragment = true }, .uniform, false, 0),
-        zgpu.bufferEntry(1, .{ .fragment = true }, .read_only_storage, false, 0),
     });
     defer gctx.releaseResource(bind_group_layout);
 
@@ -123,7 +114,6 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
 
     const bind_group = gctx.createBindGroup(bind_group_layout, &.{
         .{ .binding = 0, .buffer_handle = voxel_uniform_buffer, .offset = 0, .size = @sizeOf(VoxelUniform) },
-        .{ .binding = 1, .buffer_handle = voxel_buffer, .offset = 0, .size = voxels.len * @sizeOf(Voxel) },
     });
 
     const fb_size = window.getFramebufferSize();
@@ -137,11 +127,9 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
         .pipeline = pipeline,
         .bind_group = bind_group,
         .voxel_uniform_buffer = voxel_uniform_buffer,
-        .voxel_buffer = voxel_buffer,
         .window_width = fb_size[0],
         .window_height = fb_size[1],
         .camera = cam,
-        .voxels = voxels,
         .last_x = @as(f32, @floatFromInt(window.getSize()[0])) / 2.0,
         .last_y = @as(f32, @floatFromInt(window.getSize()[1])) / 2.0,
         .first_mouse = true,
@@ -154,7 +142,6 @@ fn init(allocator: std.mem.Allocator, window: *zglfw.Window) !State {
 fn deinit(allocator: std.mem.Allocator, state: *State) void {
     state.frame_times.deinit();
     state.gctx.destroy(allocator);
-    allocator.free(state.voxels);
     state.* = undefined;
 }
 
@@ -254,36 +241,6 @@ fn showDebugWindow(state: *State) void {
     defer zgui.end();
 }
 
-fn createVoxelGrid(allocator: std.mem.Allocator) ![]Voxel {
-    const grid_size = 32;
-    const total_voxels = grid_size * grid_size * grid_size;
-    var voxels = try allocator.alloc(Voxel, total_voxels);
-
-    for (voxels) |*voxel| {
-        voxel.* = .{
-            .color = .{ 0.8, 0.8, 0.8 },
-            .emission = .{ 0.0, 0.0, 0.0 },
-            .is_solid = false,
-        };
-    }
-
-    // Create a simple scene
-    for (0..grid_size) |x| {
-        for (0..grid_size) |z| {
-            const index = x + 0 * grid_size + z * grid_size * grid_size;
-            voxels[index].is_solid = true;
-            voxels[index].color = .{ 0.5, 0.5, 0.5 };
-        }
-    }
-
-    // Add a light source
-    const light_index = 16 + 20 * grid_size + 16 * grid_size * grid_size;
-    voxels[light_index].is_solid = true;
-    voxels[light_index].emission = .{ 5.0, 5.0, 5.0 };
-
-    return voxels;
-}
-
 fn update(state: *State) void {
     zgui.backend.newFrame(
         state.gctx.swapchain_descriptor.width,
@@ -309,9 +266,6 @@ fn draw(state: *State) void {
         .time = @floatCast(zglfw.getTime()),
     };
     gctx.queue.writeBuffer(gctx.lookupResource(state.voxel_uniform_buffer).?, 0, VoxelUniform, &.{voxel_uniform});
-
-    // TODO: remove this from the draw loop, it should be done once at the start
-    gctx.queue.writeBuffer(gctx.lookupResource(state.voxel_buffer).?, 0, Voxel, state.voxels);
 
     const back_buffer_view = gctx.swapchain.getCurrentTextureView();
     defer back_buffer_view.release();
@@ -433,7 +387,7 @@ pub fn main() !void {
     //////////////////////////
 
     window.setUserPointer(&state);
-    // _ = window.setCursorPosCallback(mouseCallback);
+    _ = window.setCursorPosCallback(mouseCallback);
     _ = window.setFramebufferSizeCallback(frameBufferResizeCallback);
     window.setInputMode(.cursor, .disabled);
 

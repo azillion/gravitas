@@ -34,55 +34,10 @@ struct Uniforms {
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(0) @binding(1) var<storage, read> voxels: array<Voxel>;
 
 const EPSILON: f32 = 0.001;
 const VOXEL_SIZE: f32 = 1.0;
 const GRID_SIZE: i32 = 32;
-
-fn ray_voxel_intersection(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> bool {
-    var t_delta = abs(vec3<f32>(VOXEL_SIZE) / ray_dir);
-    var voxel = vec3<i32>(floor(ray_origin / VOXEL_SIZE));
-    let step = vec3<i32>(sign(ray_dir));
-    var t_max = (vec3<f32>(voxel + max(step, vec3<i32>(0))) * VOXEL_SIZE - ray_origin) / ray_dir;
-
-    // Traverse the grid
-    for (var i: i32 = 0; i < GRID_SIZE * 3; i++) {  // Maximum steps: 3 * GRID_SIZE
-        // Check if we're still in the grid
-        if (any(voxel < vec3<i32>(0)) || any(voxel >= vec3<i32>(GRID_SIZE))) {
-            break;
-        }
-
-        // Calculate voxel index
-        let index = voxel.x + voxel.y * GRID_SIZE + voxel.z * GRID_SIZE * GRID_SIZE;
-        
-        // Check if the voxel is solid
-        if (voxels[index].is_solid != 0u) {
-            return true;  // Hit a solid voxel
-        }
-
-        // Move to the next voxel
-        if (t_max.x < t_max.y) {
-            if (t_max.x < t_max.z) {
-                voxel.x += step.x;
-                t_max.x += t_delta.x;
-            } else {
-                voxel.z += step.z;
-                t_max.z += t_delta.z;
-            }
-        } else {
-            if (t_max.y < t_max.z) {
-                voxel.y += step.y;
-                t_max.y += t_delta.y;
-            } else {
-                voxel.z += step.z;
-                t_max.z += t_delta.z;
-            }
-        }
-    }
-
-    return false;  // No intersection found
-}
 
 @fragment
 fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
@@ -97,18 +52,19 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     let ray_dir = normalize(far_point_3d - near_point_3d);
     let ray_origin = uniforms.camera_pos;
 
-    if (length(ray_origin - vec3<f32>(16.0, 16.0, 16.0)) < 1.0) {
-        return vec4<f32>(1.0, 0.0, 0.0, 1.0);  // Red dot at the center of the grid
-    }
+    //if (length(ray_origin - vec3<f32>(16.0, 16.0, 16.0)) < 1.0) {
+        //return vec4<f32>(1.0, 0.0, 0.0, 1.0);  // Red dot at the center of the grid
+    //}
 
-    var voxel = vec3<i32>(floor(ray_origin / VOXEL_SIZE));
-    let hit = ray_voxel_intersection(ray_origin, ray_dir);
+    //var voxel = vec3<i32>(floor(ray_origin / VOXEL_SIZE));
+    //let hit = ray_voxel_intersection(ray_origin, ray_dir);
     
-    if (hit) {
-        let index = voxel.x + voxel.y * GRID_SIZE + voxel.z * GRID_SIZE * GRID_SIZE;
-        return vec4<f32>(voxels[index].color, 1.0);
-    } else {
+    //if (hit) {
+        //return vec4<f32>(1.0, 1.0, 1.0, 1.0);  // White dot at the hit point
+        //let index = voxel.x + voxel.y * GRID_SIZE + voxel.z * GRID_SIZE * GRID_SIZE;
+        //return vec4<f32>(voxels[index].color, 1.0);
+    //} else {
         // No hit, color it sky blue
         return vec4<f32>(0.5, 0.7, 1.0, 1.0);
-    }
+    //}
 }
