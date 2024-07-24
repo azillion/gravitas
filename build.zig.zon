@@ -2,6 +2,7 @@
     .name = "gravitas",
     .version = "0.0.1",
     .dependencies = .{
+        .zgpu = .{ .path = "libs/zgpu" },
         .zpool = .{ .path = "libs/zpool" },
         .zjobs = .{ .path = "libs/zjobs" },
         .zflecs = .{ .path = "libs/zflecs" },
