@@ -20,6 +20,8 @@ const default_window_height = 1000;
 const shader_hot_reload_interval = 1.0;
 const shader_path = shaders_dir ++ "basic_pathtrace.wgsl";
 
+// TODO: Our current plan is to write this game on the gpu, so we need to figure out how to do that. lol
+
 const Vertex = struct {
     position: [3]f32,
     uv: [2]f32,
